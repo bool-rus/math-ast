@@ -4,6 +4,12 @@ use std::ops::{Add, Neg, Mul, Div, Sub};
 
 pub type BAst<T> = Box<Ast<T>>;
 
+impl<T,E> Into<Result<BAst<T>,E>> for BAst<T> {
+    fn into(self) -> Result<Box<Ast<T>>, E> {
+        Ok(self)
+    }
+}
+
 
 //*
 #[derive(Debug)]

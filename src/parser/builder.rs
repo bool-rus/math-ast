@@ -10,106 +10,123 @@ use std::fmt::Debug;
 use std::collections::HashMap;
 
 #[derive(Debug)]
-struct BuilderErr<T> {
-    msg: String,
-    result: Option<Box<Builder<T>>>,
-}
+pub struct BuilderErr<T> (
+    String,
+    Option<Builder<T>>,
+);
 
-type BuildResult<T> = Box<Builder<T>>;
+type BuildResult<T> = Result<Builder<T>, BuilderErr<T>>;
+type BB<T> = Box<Builder<T>>;
 
-impl<T> Into<Result<Builder<T>,BuilderErr<T>>> for Builder<T> {
-    fn into(self) -> Result<Builder<T>, BuilderErr<T>> {
+impl<T> Into<BuildResult<T>> for Builder<T> {
+    fn into(self) -> BuildResult<T> {
         Ok(self)
     }
 }
-
+impl<T,O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
+    fn into(self) -> Result<O, BuilderErr<T>> {
+        Err(self)
+    }
+}
 
 #[derive(Debug)]
 pub enum Builder<T> {
-    Empty(bool),
-    Simple(bool, BAst<T>),
-    Op(bool, BuildResult<T>, Operand),
-    Complex(bool, BuildResult<T>, Operand, BuildResult<T>),
+    Empty,
+    Simple(BAst<T>),
+    Op(BB<T>, Operand),
+    Complex(BB<T>, Operand, BB<T>),
+    Body(BB<T>),
 }
 
 impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> + Sub<T, Output=T> + Div<T, Output=T> {
     pub fn new() -> Builder<T> {
-        Builder::Empty(false)
+        Builder::Empty
     }
-    pub fn ast(self) -> BAst<T> {
+    fn simple_err<X>(s: &'static str) -> Result<X,BuilderErr<T>>{
+        BuilderErr(s.into(),None).into()
+    }
+    fn make_err<X>(self, s: &'static str) -> Result<X, BuilderErr<T>> {
+        BuilderErr(s.into(), Some(self)).into()
+    }
+    pub fn ast(self) -> Result<BAst<T>,BuilderErr<T>> {
         match self {
-            Builder::Empty(..) => unreachable!("expression not complete"),
-            Builder::Simple(nested, ..) if nested => unreachable!("expected ')'"),
-            Builder::Complex(nested, ..) if nested => unreachable!("expected ')'"),
-            Builder::Simple(_, bast) => bast,
-            Builder::Op(..) => unreachable!("expression not complete"),
-            Builder::Complex(_, a, op, b) => {
-                let (a, b) = (a.ast(), b.ast());
+            Builder::Empty => Self::simple_err("expression not complete"),
+            Builder::Simple(bast) => bast.into(),
+            b @ Builder::Op(..) => b.make_err("expression not complete: operation not closed"),
+            Builder::Complex( a, op, b) => {
+                let (a, b) = (a.ast()?, b.ast()?);
                 match op {
-                    Operand::Plus => Ast::plus(a, b),
-                    Operand::Minus => Ast::minus(a, b),
-                    Operand::Multiple => Ast::multiple(a, b),
-                    Operand::Divide => Ast::divide(a, b),
-                    _ => unreachable!("{:?} in complex")
+                    Operand::Plus => Ast::plus(a, b).into(),
+                    Operand::Minus => Ast::minus(a, b).into(),
+                    Operand::Multiple => Ast::multiple(a, b).into(),
+                    Operand::Divide => Ast::divide(a, b).into(),
+                    _ => BuilderErr(format!("{:?} in complex",op), None).into(),
                 }
             }
+            b @ Builder::Body(..) => b.make_err("expected ')'").into()
         }
     }
-    pub fn process(self, lex: Lexem<T>) -> Builder<T> {
+    pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
         match self {
-            Builder::Empty(nested) => Self::for_empty(nested, lex),
-            a @ Builder::Simple(_, _) => Self::for_simple(a, lex),
-            Builder::Op(nested, a, op) => Self::for_op(nested, a, op, lex),
-            Builder::Complex(nested, a, op, b) => Self::for_complex(nested, a, op, b, lex),
-        }
+            Builder::Empty => Self::for_empty(lex),
+            a @ Builder::Simple(..) => Self::for_simple(a.into(), lex),
+            Builder::Op(a, op) => Self::for_op(a, op, lex),
+            Builder::Complex(a, op, b) => Self::for_complex(a, op, b, lex),
+            Builder::Body(inner) => Self::for_body(inner,lex),
+        }.into()
     }
-    fn for_empty(nested: bool, lex: Lexem<T>) -> Builder<T> {
+    fn for_empty(lex: Lexem<T>) -> BuildResult<T> {
         match lex {
-            Lexem::Number(num) => Builder::Simple(nested, Ast::constant(num)),
-            Lexem::Letter(name) => Builder::Simple(nested, Ast::variable(name)),
-            Lexem::Op(Operand::Open) => Builder::Empty(true),
-            _ => unreachable!("unexpected lexem: {:?}", lex),
-        }
+            Lexem::Number(num) => Builder::Simple(Ast::constant(num)),
+            Lexem::Letter(name) => Builder::Simple(Ast::variable(name)),
+            Lexem::Op(Operand::Open) => Builder::Body(Builder::Empty.into()),
+            _ => return BuilderErr(format!("unexpected lexem: {:?}", lex),None).into()
+        }.into()
     }
-    fn for_simple(a: Builder<T>, lex: Lexem<T>) -> Builder<T> {
-        match (a, lex) {
-            (Builder::Simple(nested, ast), Lexem::Op(op)) =>
+    fn for_simple(a: BB<T>, lex: Lexem<T>) -> BuildResult<T> { //TOD: потом доделать для функции
+        match lex {
+            Lexem::Op(op) =>
                 Builder::Op(
-                    nested,
-                    Builder::Simple(false, ast).into(),
+                    a,
                     op,
                 ),
-            (_, l) => unreachable!("expected lexem after var/const, found {:?}", l)
-        }
+            l => return BuilderErr(format!("expected lexem after var/const, found {:?}", l),Some(*a)).into()
+        }.into()
     }
-    fn for_op(nested: bool, a: BuildResult<T>, op: Operand, lex: Lexem<T>) -> Builder<T> {
-        Builder::Complex(nested, a, op, Self::for_empty(nested, lex).into())
+    fn for_op(a: BB<T>, op: Operand, lex: Lexem<T>) -> BuildResult<T> {
+        Builder::Complex(a, op, Self::for_empty(lex)?.into()).into()
     }
-    fn for_complex(nested: bool, a: BuildResult<T>, op: Operand, b: BuildResult<T>, lex: Lexem<T>) -> Builder<T> {
+    fn for_complex(a: BB<T>, op: Operand, b: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
         match (*b, lex) {
-            (b @ Builder::Empty(..), lex) |
-            (b @ Builder::Op(..), lex) => Builder::Complex(nested, a, op, b.process(lex).into()),
-            (b, Lexem::Op(Operand::Close)) => match nested {
-                true => Builder::Complex(false, a, op, b.into()),
-                false => unreachable!("unexpected ')'"),
-            },
-            (b @ Builder::Simple(..), Lexem::Op(new_op)) => {
-                let b = b.into();
+            (Builder::Empty, _) => unreachable!(),
+            (b @ Builder::Body(..), lex) |
+            (b @ Builder::Op(..), lex) => Ok(
+                Builder::Complex(a, op, b.process(lex)?.into())
+            ),
+            (Builder::Simple(..), Lexem::Op(Operand::Open)) => unreachable!(), //доделать для функции
+            (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
+                let b: BB<T> = b.into();
                 if new_op > op {
-                    Builder::Complex(nested, a, op, Builder::Op(false, b, new_op).into())
+                    Builder::Complex(a, op, Builder::Op(b, new_op).into())
                 } else {
-                    Builder::Op(nested, Builder::Complex(false, a, op, b).into(), new_op)
+                    Builder::Op(Builder::Complex( a, op, b).into(), new_op)
                 }
-            }
-            (b @ Builder::Complex(..), Lexem::Op(new_op)) => {
+            }),
+            (b @ Builder::Complex(..), Lexem::Op(new_op)) => Ok({
                 if new_op > op {
-                    Builder::Complex(nested, a, op, b.process(Lexem::Op(new_op)).into())
+                    Builder::Complex(a, op, b.process(Lexem::Op(new_op))?.into())
                 } else {
-                    Builder::Op(nested, Builder::Complex(false, a, op, b.into()).into(), new_op)
+                    Builder::Op(Builder::Complex( a, op, b.into()).into(), new_op)
                 }
-            }
-            _ => unreachable!("called method for_complex, but object is simple")
+            }),
+            _ => Self::simple_err("called method for_complex, but object is simple")
         }
+    }
+    fn for_body(inner: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
+        match &lex {
+            &Lexem::Op(Operand::Close) => Builder::Simple(inner.ast()?),
+            _ => Builder::Body(inner.process(lex)?.into()),
+        }.into()
     }
 }
 
@@ -120,8 +137,8 @@ fn build_plus() {
         Lexem::Op(Operand::Plus),
         Lexem::Number(10),
     ];
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex));
-    let tree = b.ast();
+    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+    let tree = b.ast().unwrap();
     println!("tree: {:?}", tree);
     let mut params = HashMap::new();
     params.insert("x".to_string(), 5);
@@ -141,8 +158,8 @@ fn build_ord() {
         Lexem::Op(Operand::Plus),
         Lexem::Number(9)
     ]; //x-10*x+9
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex));
-    let tree = b.ast();
+    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+    let tree = b.ast().unwrap();
     println!("tree: {:?}", tree);
     let mut params = HashMap::new();
     params.insert("x".to_string(), 1);
@@ -163,8 +180,8 @@ fn build_mipl() {
         Lexem::Op(Operand::Plus),
         Lexem::Number(9)
     ]; //x-10-x+9
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex));
-    let tree = b.ast();
+    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+    let tree = b.ast().unwrap();
     println!("tree: {:?}", tree);
     let mut params = HashMap::new();
     params.insert("x".to_string(), 1);
@@ -182,20 +199,16 @@ fn build_brackets() {
         Lexem::Letter("x".to_string()),
         Lexem::Op(Operand::Minus),
         Lexem::Number(2),
-        Lexem::Op(Operand::Close)
-    ]; //x-(x-2)
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex));
-    let tree = b.ast();
+        Lexem::Op(Operand::Close),
+        Lexem::Op(Operand::Multiple),
+        Lexem::Number(3),
+    ]; //x-(x-2)*3
+    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+    let tree = b.ast().unwrap();
     println!("tree: {:?}", tree);
     let mut params = HashMap::new();
     params.insert("x".to_string(), 1);
 
     let res = tree.calculate(&params).unwrap();
-    assert_eq!(2, res);
-}
-
-#[test]
-fn test_from() {
-    //let b = Builder::Empty(false);
-    //let b = make_bb(b);
+    assert_eq!(4, res);
 }
