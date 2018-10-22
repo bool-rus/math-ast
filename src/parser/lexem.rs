@@ -2,6 +2,8 @@
 use std::str::FromStr;
 use std::fmt::Debug;
 use std::cmp::Ordering;
+use std::ops::{Add,Sub,Mul,Div};
+use parser::faces::Fun;
 
 #[derive(Debug)]
 pub enum Lexem<T> {
@@ -12,25 +14,56 @@ pub enum Lexem<T> {
 
 #[derive(Debug,Copy,Clone,PartialOrd,Eq,PartialEq)]
 pub enum Operand {
+/*
     Plus = 1,
     Minus = 2,
     Multiple = 4,
     Divide = 3,
-    Open = 5,
-    Close = 6,
+*/
+    Low(char),
+    High(char),
+
+    Open,
+    Close,
+
 }
+/*
+fn fun<T,F>(f: F, t: T) -> T where F: Into<Fn(T,T)->T>  {
+    let f = f.into();
+    f(t,t)
+}
+*/
 
 
 impl Operand {
-    fn from_operand(ch: char) -> Option<Operand> {
+    fn from(ch: char) -> Option<Operand> {
         match ch {
-            '+' => Some(Operand::Plus),
-            '-' => Some(Operand::Minus),
-            '*' => Some(Operand::Multiple),
-            '/' => Some(Operand::Divide),
+            '+' => Some(Operand::Low('+')),
+            '-' => Some(Operand::Low('-')),
+            '*' => Some(Operand::High('*')),
+            '/' => Some(Operand::High('/')),
             '(' => Some(Operand::Open),
             ')' => Some(Operand::Close),
             _ => None,
+        }
+    }
+    fn ch(self) -> char{
+        match self {
+            Operand::Low(c) => c,
+            Operand::High(c) => c,
+            _ => unreachable!()
+        }
+    }
+    pub fn to_fn<T>(self) -> Fun<T>
+        where //X: From<Fn(T,T)->T>,
+              T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> + Sub<T, Output=T> + Div<T, Output=T>
+    {
+        match self.ch() {
+            '+' => Fun::from(|a, b| a+b),
+            '-' => Fun::from(|a, b| a-b),
+            '*' => Fun::from(|a, b| a*b),
+            '/' => Fun::from(|a, b| a/b),
+            _ => unreachable!(),
         }
     }
 }
@@ -43,7 +76,7 @@ enum State {
 
 impl From<char> for State {
     fn from(ch: char) -> Self {
-        let op = Operand::from_operand(ch);
+        let op = Operand::from(ch);
         if let Some(op) = op {
             State::Operand(op)
         } else {
@@ -122,6 +155,12 @@ impl<T> Parser<T> where T: FromStr + Debug, T::Err: Debug {
 pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: FromStr + Debug, T::Err: Debug {
     let p  = input.chars().fold(Parser::new(), |p, ch|p.process(ch)).end();
     p.lexemes
+}
+
+
+#[cfg(test)]
+pub fn make_operand<T>(ch: char) -> Lexem<T> {
+    Lexem::Op(Operand::from(ch).unwrap())
 }
 
 #[test]

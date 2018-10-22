@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+extern crate std;
 
+use std::collections::HashMap;
 use std::ops::{Add, Neg, Mul, Div, Sub};
+use parser::faces::Fun;
 
 pub type BAst<T> = Box<Ast<T>>;
 
@@ -20,6 +22,7 @@ pub enum Ast<T> {
     Divide(BAst<T>, BAst<T>),
     Constant(T),
     Variable(String),
+    Operation(Fun<T>, BAst<T>, BAst<T>),
 }
 
 impl<T> Ast<T> where T: Clone + Add<T, Output=T> + Mul<T,Output=T> + Sub<T, Output=T> + Div<T, Output = T>{
@@ -31,6 +34,7 @@ impl<T> Ast<T> where T: Clone + Add<T, Output=T> + Mul<T,Output=T> + Sub<T, Outp
             Ast::Minus(a, b) => a.calculate(params)? - b.calculate(params)?,
             Ast::Multiple(a, b) => a.calculate(params)? * b.calculate(params)?,
             Ast::Divide(a, b) => a.calculate(params)? / b.calculate(params)?,
+            Ast::Operation(fun,a,b) => fun(a.calculate(params)?, b.calculate(params)?),
         })
     }
     pub fn plus(a: BAst<T>, b: BAst<T>) -> BAst<T> {
@@ -62,7 +66,7 @@ fn test_tree() {
     x.calculate(&HashMap::new());
     let tree = Ast::plus(
         Ast::constant(60),
-        Ast::multiple(
+        Ast::Operation(Fun::from(|a,b|a*b),
             Ast::minus(
                 Ast::constant(12),
                 Ast::divide(
@@ -71,7 +75,7 @@ fn test_tree() {
                     )
                 ),
             Ast::variable("y".to_string())
-            )
+            ).into()
         ); // 60 + (12-10/x)*y
     println!("tree: {:?}", tree);
     let mut map = HashMap::new();

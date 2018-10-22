@@ -50,21 +50,12 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
     }
     pub fn ast(self) -> Result<BAst<T>,BuilderErr<T>> {
         match self {
-            Builder::Empty => Self::simple_err("expression not complete"),
-            Builder::Simple(bast) => bast.into(),
-            b @ Builder::Op(..) => b.make_err("expression not complete: operation not closed"),
-            Builder::Complex( a, op, b) => {
-                let (a, b) = (a.ast()?, b.ast()?);
-                match op {
-                    Operand::Plus => Ast::plus(a, b).into(),
-                    Operand::Minus => Ast::minus(a, b).into(),
-                    Operand::Multiple => Ast::multiple(a, b).into(),
-                    Operand::Divide => Ast::divide(a, b).into(),
-                    _ => BuilderErr(format!("{:?} in complex",op), None).into(),
-                }
-            }
-            b @ Builder::Body(..) => b.make_err("expected ')'").into()
-        }
+            Builder::Empty => return Self::simple_err("expression not complete"),
+            Builder::Simple(bast) => bast,
+            b @ Builder::Op(..) => return b.make_err("expression not complete: operation not closed"),
+            Builder::Complex( a, op, b) => Ast::Operation(op.to_fn(),a.ast()?,b.ast()?).into(),
+            b @ Builder::Body(..) => return b.make_err("expected ')'")
+        }.into()
     }
     pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
         match self {
@@ -134,7 +125,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
 fn build_plus() {
     let lexes = vec![
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Plus),
+        make_operand('+'),
         Lexem::Number(10),
     ];
     let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
@@ -151,11 +142,11 @@ fn build_plus() {
 fn build_ord() {
     let lexes = vec![
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Minus),
+        make_operand('-'),
         Lexem::Number(10),
-        Lexem::Op(Operand::Multiple),
+        make_operand('*'),
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Plus),
+        make_operand('+'),
         Lexem::Number(9)
     ]; //x-10*x+9
     let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
@@ -173,11 +164,11 @@ fn build_ord() {
 fn build_mipl() {
     let lexes = vec![
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Minus),
+        make_operand('-'),
         Lexem::Number(10),
-        Lexem::Op(Operand::Minus),
+        make_operand('-'),
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Plus),
+        make_operand('+'),
         Lexem::Number(9)
     ]; //x-10-x+9
     let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
@@ -194,13 +185,13 @@ fn build_mipl() {
 fn build_brackets() {
     let lexes = vec![
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Minus),
+        make_operand('-'),
         Lexem::Op(Operand::Open),
         Lexem::Letter("x".to_string()),
-        Lexem::Op(Operand::Minus),
+        make_operand('-'),
         Lexem::Number(2),
         Lexem::Op(Operand::Close),
-        Lexem::Op(Operand::Multiple),
+        make_operand('*'),
         Lexem::Number(3),
     ]; //x-(x-2)*3
     let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
