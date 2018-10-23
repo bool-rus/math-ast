@@ -186,14 +186,14 @@ fn build_brackets() {
     let lexes = vec![
         Lexem::Letter("x".to_string()),
         make_operand('-'),
+        Lexem::Number(3),
+        make_operand('*'),
         Lexem::Op(Operand::Open),
         Lexem::Letter("x".to_string()),
         make_operand('-'),
         Lexem::Number(2),
         Lexem::Op(Operand::Close),
-        make_operand('*'),
-        Lexem::Number(3),
-    ]; //x-(x-2)*3
+    ]; //x-3*(x-2)
     let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
     let tree = b.ast().unwrap();
     println!("tree: {:?}", tree);
