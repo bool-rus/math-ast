@@ -33,8 +33,8 @@ impl<T,O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
 pub enum Builder<T> {
     Empty,
     Simple(BAst<T>),
-    Op(BB<T>, Operand),
-    Complex(BB<T>, Operand, BB<T>),
+    Pending(BB<T>, Operand),
+    Complete(BB<T>, Operand, BB<T>),
     Body(BB<T>),
 }
 
@@ -52,8 +52,8 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
         match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
             Builder::Simple(bast) => bast,
-            b @ Builder::Op(..) => return b.make_err("expression not complete: operation not closed"),
-            Builder::Complex( a, op, b) => Ast::Operation(op.to_fn(),a.ast()?,b.ast()?).into(),
+            b @ Builder::Pending(..) => return b.make_err("expression not complete: operation not closed"),
+            Builder::Complete(a, op, b) => Ast::Operation(op.to_fn(), a.ast()?, b.ast()?).into(),
             b @ Builder::Body(..) => return b.make_err("expected ')'")
         }.into()
     }
@@ -61,8 +61,8 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
         match self {
             Builder::Empty => Self::for_empty(lex),
             a @ Builder::Simple(..) => Self::for_simple(a.into(), lex),
-            Builder::Op(a, op) => Self::for_op(a, op, lex),
-            Builder::Complex(a, op, b) => Self::for_complex(a, op, b, lex),
+            Builder::Pending(a, op) => Self::for_op(a, op, lex),
+            Builder::Complete(a, op, b) => Self::for_complex(a, op, b, lex),
             Builder::Body(inner) => Self::for_body(inner,lex),
         }.into()
     }
@@ -77,7 +77,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
     fn for_simple(a: BB<T>, lex: Lexem<T>) -> BuildResult<T> { //TOD: потом доделать для функции
         match lex {
             Lexem::Op(op) =>
-                Builder::Op(
+                Builder::Pending(
                     a,
                     op,
                 ),
@@ -85,29 +85,29 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
         }.into()
     }
     fn for_op(a: BB<T>, op: Operand, lex: Lexem<T>) -> BuildResult<T> {
-        Builder::Complex(a, op, Self::for_empty(lex)?.into()).into()
+        Builder::Complete(a, op, Self::for_empty(lex)?.into()).into()
     }
     fn for_complex(a: BB<T>, op: Operand, b: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
         match (*b, lex) {
             (Builder::Empty, _) => unreachable!(),
             (b @ Builder::Body(..), lex) |
-            (b @ Builder::Op(..), lex) => Ok(
-                Builder::Complex(a, op, b.process(lex)?.into())
+            (b @ Builder::Pending(..), lex) => Ok(
+                Builder::Complete(a, op, b.process(lex)?.into())
             ),
             (Builder::Simple(..), Lexem::Op(Operand::Open)) => unreachable!(), //доделать для функции
             (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
                 let b: BB<T> = b.into();
                 if new_op > op {
-                    Builder::Complex(a, op, Builder::Op(b, new_op).into())
+                    Builder::Complete(a, op, Builder::Pending(b, new_op).into())
                 } else {
-                    Builder::Op(Builder::Complex( a, op, b).into(), new_op)
+                    Builder::Pending(Builder::Complete(a, op, b).into(), new_op)
                 }
             }),
-            (b @ Builder::Complex(..), Lexem::Op(new_op)) => Ok({
+            (b @ Builder::Complete(..), Lexem::Op(new_op)) => Ok({
                 if new_op > op {
-                    Builder::Complex(a, op, b.process(Lexem::Op(new_op))?.into())
+                    Builder::Complete(a, op, b.process(Lexem::Op(new_op))?.into())
                 } else {
-                    Builder::Op(Builder::Complex( a, op, b.into()).into(), new_op)
+                    Builder::Pending(Builder::Complete(a, op, b.into()).into(), new_op)
                 }
             }),
             _ => Self::simple_err("called method for_complex, but object is simple")
