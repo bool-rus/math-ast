@@ -36,6 +36,12 @@ fn fun<T,F>(f: F, t: T) -> T where F: Into<Fn(T,T)->T>  {
 
 
 impl Operand {
+    pub fn more(&self, rhs: &Operand) -> bool{
+        match (self, rhs) {
+            (Operand::High(..),Operand::Low(..)) => true,
+            _ => false,
+        }
+    }
     fn from(ch: char) -> Option<Operand> {
         match ch {
             '+' => Some(Operand::Low('+')),
@@ -45,13 +51,6 @@ impl Operand {
             '(' => Some(Operand::Open),
             ')' => Some(Operand::Close),
             _ => None,
-        }
-    }
-    fn ch(self) -> char{
-        match self {
-            Operand::Low(c) => c,
-            Operand::High(c) => c,
-            _ => unreachable!()
         }
     }
     pub fn to_fn<T>(self) -> Fun<T>
@@ -64,6 +63,13 @@ impl Operand {
             '*' => Fun::from(|a, b| a*b),
             '/' => Fun::from(|a, b| a/b),
             _ => unreachable!(),
+        }
+    }
+    fn ch(self) -> char{
+        match self {
+            Operand::Low(c) => c,
+            Operand::High(c) => c,
+            _ => unreachable!()
         }
     }
 }

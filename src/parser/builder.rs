@@ -6,9 +6,6 @@ use std::ops::Mul;
 use std::ops::Sub;
 use std::fmt::Debug;
 
-#[cfg(test)]
-use std::collections::HashMap;
-
 #[derive(Debug)]
 pub struct BuilderErr<T> (
     String,
@@ -58,6 +55,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
         }.into()
     }
     pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
+        #[cfg(test)] println!("lex: {:?}, b: {:?}",lex, self);
         match self {
             Builder::Empty => Self::for_empty(lex),
             a @ Builder::Simple(..) => Self::for_simple(a.into(), lex),
@@ -65,6 +63,13 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
             Builder::Complete(a, op, b) => Self::for_complex(a, op, b, lex),
             Builder::Body(inner) => Self::for_body(inner,lex),
         }.into()
+    }
+    fn has_body(&self) -> bool {
+        match &self {
+            &Builder::Body(..) => true,
+            &Builder::Complete(_, _, b) => b.has_body(),
+            _ => false,
+        }
     }
     fn for_empty(lex: Lexem<T>) -> BuildResult<T> {
         match lex {
@@ -97,109 +102,124 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
             (Builder::Simple(..), Lexem::Op(Operand::Open)) => unreachable!(), //доделать для функции
             (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
                 let b: BB<T> = b.into();
-                if new_op > op {
+                if new_op.more(&op) {
                     Builder::Complete(a, op, Builder::Pending(b, new_op).into())
                 } else {
                     Builder::Pending(Builder::Complete(a, op, b).into(), new_op)
                 }
             }),
             (b @ Builder::Complete(..), Lexem::Op(new_op)) => Ok({
-                if new_op > op {
+                if new_op > op || b.has_body() {
                     Builder::Complete(a, op, b.process(Lexem::Op(new_op))?.into())
                 } else {
                     Builder::Pending(Builder::Complete(a, op, b.into()).into(), new_op)
                 }
             }),
-            _ => Self::simple_err("called method for_complex, but object is simple")
+            (b @ Builder::Complete(..), lex) => if b.has_body() {
+                Builder::Complete(a, op, b.process(lex)?.into()).into()
+            } else {
+                Self::simple_err("unexpected lexem")
+            }
+            _ => unreachable!()
         }
     }
     fn for_body(inner: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
         match &lex {
-            &Lexem::Op(Operand::Close) => Builder::Simple(inner.ast()?),
+            &Lexem::Op(Operand::Close) if !inner.has_body() => Builder::Simple(inner.ast()?),
             _ => Builder::Body(inner.process(lex)?.into()),
         }.into()
     }
 }
 
-#[test]
-fn build_plus() {
-    let lexes = vec![
-        Lexem::Letter("x".to_string()),
-        make_operand('+'),
-        Lexem::Number(10),
-    ];
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
-    let tree = b.ast().unwrap();
-    println!("tree: {:?}", tree);
-    let mut params = HashMap::new();
-    params.insert("x".to_string(), 5);
-
-    let res = tree.calculate(&params).unwrap();
-    assert_eq!(15, res);
-}
-
-#[test]
-fn build_ord() {
-    let lexes = vec![
-        Lexem::Letter("x".to_string()),
-        make_operand('-'),
-        Lexem::Number(10),
-        make_operand('*'),
-        Lexem::Letter("x".to_string()),
-        make_operand('+'),
-        Lexem::Number(9)
-    ]; //x-10*x+9
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
-    let tree = b.ast().unwrap();
-    println!("tree: {:?}", tree);
-    let mut params = HashMap::new();
-    params.insert("x".to_string(), 1);
-
-    let res = tree.calculate(&params).unwrap();
-    assert_eq!(0, res);
-}
 
 
-#[test]
-fn build_mipl() {
-    let lexes = vec![
-        Lexem::Letter("x".to_string()),
-        make_operand('-'),
-        Lexem::Number(10),
-        make_operand('-'),
-        Lexem::Letter("x".to_string()),
-        make_operand('+'),
-        Lexem::Number(9)
-    ]; //x-10-x+9
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
-    let tree = b.ast().unwrap();
-    println!("tree: {:?}", tree);
-    let mut params = HashMap::new();
-    params.insert("x".to_string(), 1);
+#[cfg(test)]
+mod test {
+    use parser::lexem::Lexem;
+    use parser::lexem::make_operand;
+    use std::collections::HashMap;
+    use parser::lexem::Operand;
+    use parser::builder::Builder;
 
-    let res = tree.calculate(&params).unwrap();
-    assert_eq!(-1, res);
-}
 
-#[test]
-fn build_brackets() {
-    let lexes = vec![
-        Lexem::Letter("x".to_string()),
-        make_operand('-'),
-        Lexem::Number(3),
-        make_operand('*'),
-        Lexem::Op(Operand::Open),
-        Lexem::Letter("x".to_string()),
-        make_operand('-'),
-        Lexem::Number(2),
-        Lexem::Op(Operand::Close),
-    ]; //x-3*(x-2)
-    let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
-    let tree = b.ast().unwrap();
-    println!("tree: {:?}", tree);
-    let mut params = HashMap::new();
-    params.insert("x".to_string(), 1);
+    #[test]
+    fn build_plus() {
+        let lexes = vec![
+            Lexem::Letter("x".to_string()),
+            make_operand('+'),
+            Lexem::Number(10),
+        ];
+        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let tree = b.ast().unwrap();
+        println!("tree: {:?}", tree);
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), 5);
 
-    let res = tree.calculate(&params).unwrap();
-    assert_eq!(4, res);
+        let res = tree.calculate(&params).unwrap();
+        assert_eq!(15, res);
+    }
+
+    #[test]
+    fn build_ord() {
+        let lexes = vec![
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(10),
+            make_operand('*'),
+            Lexem::Letter("x".to_string()),
+            make_operand('+'),
+            Lexem::Number(9)
+        ]; //x-10*x+9
+        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let tree = b.ast().unwrap();
+        println!("tree: {:?}", tree);
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), 1);
+
+        let res = tree.calculate(&params).unwrap();
+        assert_eq!(0, res);
+    }
+    #[test]
+    fn build_mipl() {
+        let lexes = vec![
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(10),
+            make_operand('-'),
+            Lexem::Letter("x".to_string()),
+            make_operand('+'),
+            Lexem::Number(9)
+        ]; //x-10-x+9
+        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let tree = b.ast().unwrap();
+        println!("tree: {:?}", tree);
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), 1);
+
+        let res = tree.calculate(&params).unwrap();
+        assert_eq!(-1, res);
+    }
+
+    #[test]
+    fn build_brackets() {
+        let lexes = vec![
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(3),
+            make_operand('*'),
+            Lexem::Op(Operand::Open),
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(2),
+            Lexem::Op(Operand::Close),
+        ]; //x-3*(x-2)
+        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let tree = b.ast().unwrap();
+        println!("tree: {:?}", tree);
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), 1);
+
+        let res = tree.calculate(&params).unwrap();
+        assert_eq!(4, res);
+    }
 }
