@@ -73,8 +73,8 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
     }
     fn for_empty(lex: Lexem<T>) -> BuildResult<T> {
         match lex {
-            Lexem::Number(num) => Builder::Simple(Ast::constant(num)),
-            Lexem::Letter(name) => Builder::Simple(Ast::variable(name)),
+            Lexem::Number(num) => Builder::Simple(Ast::Constant(num).into()),
+            Lexem::Letter(name) => Builder::Simple(Ast::Variable(name).into()),
             Lexem::Open => Builder::Body(Builder::Empty.into()),
             _ => return BuilderErr(format!("unexpected lexem: {:?}", lex),None).into()
         }.into()

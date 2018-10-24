@@ -16,10 +16,6 @@ impl<T,E> Into<Result<BAst<T>,E>> for BAst<T> {
 //*
 #[derive(Debug)]
 pub enum Ast<T> {
-    Plus(BAst<T>, BAst<T>),
-    Minus(BAst<T>, BAst<T>),
-    Multiple(BAst<T>, BAst<T>),
-    Divide(BAst<T>, BAst<T>),
     Constant(T),
     Variable(String),
     Operation(Fun<T>, BAst<T>, BAst<T>),
@@ -30,60 +26,64 @@ impl<T> Ast<T> where T: Clone + Add<T, Output=T> + Mul<T,Output=T> + Sub<T, Outp
         Some(match self {
             Ast::Constant(num) => num.clone(),
             Ast::Variable(name) => params.get(name)?.clone(),
-            Ast::Plus(a, b) => a.calculate(params)? + b.calculate(params)?,
-            Ast::Minus(a, b) => a.calculate(params)? - b.calculate(params)?,
-            Ast::Multiple(a, b) => a.calculate(params)? * b.calculate(params)?,
-            Ast::Divide(a, b) => a.calculate(params)? / b.calculate(params)?,
             Ast::Operation(fun,a,b) => fun(a.calculate(params)?, b.calculate(params)?),
         })
-    }
-    pub fn plus(a: BAst<T>, b: BAst<T>) -> BAst<T> {
-        Box::new(Ast::Plus(a, b))
-    }
-    pub fn minus(a: BAst<T>, b: BAst<T>) -> BAst<T> {
-        Box::new(Ast::Minus(a, b))
-    }
-    pub fn multiple(a: BAst<T>, b: BAst<T>) -> BAst<T> {
-        Box::new(Ast::Multiple(a, b))
-    }
-    pub fn divide(a: BAst<T>, b: BAst<T>) -> BAst<T> {
-        Box::new(Ast::Divide(a, b))
-    }
-    pub fn constant(t: T) -> BAst<T> {
-        Box::new(Ast::Constant(t))
-    }
-    pub fn variable(name: String) -> BAst<T> {
-        Box::new(Ast::Variable(name))
     }
 }
 //*/
 
 
+#[cfg(test)]
+mod test {
+    use parser::tree::BAst;
+    use parser::tree::Ast;
+    use parser::faces::Fun;
+    use std::collections::HashMap;
+    use std::ops::{Add,Sub,Mul,Div};
 
-#[test]
-fn test_tree() {
-    let x = Box::new(Ast::Constant(1));
-    x.calculate(&HashMap::new());
-    let tree = Ast::plus(
-        Ast::constant(60),
-        Ast::Operation(Fun::from(|a,b|a*b),
-            Ast::minus(
-                Ast::constant(12),
-                Ast::divide(
-                    Ast::constant(10),
-                    Ast::variable("x".to_string())
-                    )
-                ),
-            Ast::variable("y".to_string())
+    fn plus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Add<T, Output=T> {
+        Box::new(Ast::Operation(Fun::from(|x,y|x+y),a, b))
+    }
+    fn minus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Sub<T, Output=T> {
+        Box::new(Ast::Operation(Fun::from(|x,y|x-y),a, b))
+    }
+    fn multiple<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Mul<T, Output=T> {
+        Box::new(Ast::Operation(Fun::from(|x,y|x*y),a, b))
+    }
+    fn divide<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Div<T, Output=T> {
+        Box::new(Ast::Operation(Fun::from(|x,y|x/y),a, b))
+    }
+    fn constant<T>(t: T) -> BAst<T> {
+        Box::new(Ast::Constant(t))
+    }
+    fn variable<T>(name: String) -> BAst<T> {
+        Box::new(Ast::Variable(name))
+    }
+    #[test]
+    fn test_tree() {
+        let x = Box::new(constant(1));
+        x.calculate(&HashMap::new());
+        let tree = plus(
+            constant(60),
+            multiple(
+                           minus(
+                               constant(12),
+                               divide(
+                                   constant(10),
+                                   variable("x".to_string())
+                               )
+                           ),
+                           variable("y".to_string())
             ).into()
         ); // 60 + (12-10/x)*y
-    println!("tree: {:?}", tree);
-    let mut map = HashMap::new();
-    map.insert("x".to_string(), 5);
-    map.insert("y".to_string(), 2);
-    assert_eq!(tree.calculate(&map).unwrap(), 80);
+        println!("tree: {:?}", tree);
+        let mut map = HashMap::new();
+        map.insert("x".to_string(), 5);
+        map.insert("y".to_string(), 2);
+        assert_eq!(tree.calculate(&map).unwrap(), 80);
 
-    map.insert("x".to_string(), 2);
-    map.insert("y".to_string(), 5);
-    assert_eq!(tree.calculate(&map).unwrap(), 95);
+        map.insert("x".to_string(), 2);
+        map.insert("y".to_string(), 5);
+        assert_eq!(tree.calculate(&map).unwrap(), 95);
+    }
 }

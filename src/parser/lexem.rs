@@ -27,6 +27,7 @@ impl<T> Lexem<T> {
 pub enum Operand {
     Low(char),
     High(char),
+    Highest(char),
 }
 
 
@@ -39,10 +40,9 @@ impl Operand {
     }
     fn from(ch: char) -> Option<Operand> {
         match ch {
-            '+' => Some(Operand::Low('+')),
-            '-' => Some(Operand::Low('-')),
-            '*' => Some(Operand::High('*')),
-            '/' => Some(Operand::High('/')),
+            '+' | '-' => Some(Operand::Low(ch)),
+            '*' | '/' => Some(Operand::High(ch)),
+            '^' => Some(Operand::Highest(ch)),
             _ => None,
         }
     }
@@ -55,6 +55,7 @@ impl Operand {
             '-' => Fun::from(|a, b| a - b),
             '*' => Fun::from(|a, b| a * b),
             '/' => Fun::from(|a, b| a / b),
+            '^' => Fun::from(|_,_|unimplemented!()),
             _ => unreachable!(),
         }
     }
@@ -62,8 +63,13 @@ impl Operand {
         match self {
             Operand::Low(c) => c,
             Operand::High(c) => c,
+            Operand::Highest(c) => c,
         }
     }
+}
+
+fn pow<T>(a: T, b: T){
+
 }
 
 #[derive(Debug)]
