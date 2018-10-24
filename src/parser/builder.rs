@@ -75,7 +75,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
         match lex {
             Lexem::Number(num) => Builder::Simple(Ast::constant(num)),
             Lexem::Letter(name) => Builder::Simple(Ast::variable(name)),
-            Lexem::Op(Operand::Open) => Builder::Body(Builder::Empty.into()),
+            Lexem::Open => Builder::Body(Builder::Empty.into()),
             _ => return BuilderErr(format!("unexpected lexem: {:?}", lex),None).into()
         }.into()
     }
@@ -99,7 +99,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
             (b @ Builder::Pending(..), lex) => Ok(
                 Builder::Complete(a, op, b.process(lex)?.into())
             ),
-            (Builder::Simple(..), Lexem::Op(Operand::Open)) => unreachable!(), //доделать для функции
+            (Builder::Simple(..), Lexem::Open) => unreachable!(), //доделать для функции
             (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
                 let b: BB<T> = b.into();
                 if new_op.more(&op) {
@@ -125,7 +125,7 @@ impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> 
     }
     fn for_body(inner: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
         match &lex {
-            &Lexem::Op(Operand::Close) if !inner.has_body() => Builder::Simple(inner.ast()?),
+            &Lexem::Close if !inner.has_body() => Builder::Simple(inner.ast()?),
             _ => Builder::Body(inner.process(lex)?.into()),
         }.into()
     }
@@ -207,11 +207,11 @@ mod test {
             make_operand('-'),
             Lexem::Number(3),
             make_operand('*'),
-            Lexem::Op(Operand::Open),
+            Lexem::Open,
             Lexem::Letter("x".to_string()),
             make_operand('-'),
             Lexem::Number(2),
-            Lexem::Op(Operand::Close),
+            Lexem::Close,
         ]; //x-3*(x-2)
         let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
         let tree = b.ast().unwrap();
