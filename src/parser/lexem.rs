@@ -8,18 +8,13 @@ use super::num::Num;
 use super::num::Integer;
 use super::num::Float;
 
+#[derive(Debug)]
 pub enum Lexem<T> {
     Number(T),
     Letter(String),
     Op(Operand),
     Open,
     Close,
-}
-
-impl<T> Debug for Lexem<T> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        unimplemented!()
-    }
 }
 
 
@@ -45,6 +40,8 @@ impl Operand {
     pub fn more(&self, rhs: &Operand) -> bool {
         match (self, rhs) {
             (Operand::High(..), Operand::Low(..)) => true,
+            (Operand::Highest(..), Operand::High(..)) => true,
+            (Operand::Highest(..), Operand::Low(..)) => true,
             _ => false,
         }
     }
@@ -58,14 +55,14 @@ impl Operand {
     }
     pub fn to_fn<T>(self) -> Fun<T>
         where //X: From<Fn(T,T)->T>,
-            T: Num
+            T: Float
     {
         match self.ch() {
             '+' => Fun::from(|a, b| a + b),
             '-' => Fun::from(|a, b| a - b),
             '*' => Fun::from(|a, b| a * b),
             '/' => Fun::from(|a, b| a / b),
-            '^' => Fun::from(|a,b|pow(a,b)),
+            '^' => Fun::from(|a,b |unimplemented!()),
             _ => unreachable!(),
         }
     }
@@ -77,9 +74,7 @@ impl Operand {
         }
     }
 }
-fn pow<T>(a: T, b: T) -> T where T: Num {
-    unreachable!();
-}
+
 
 #[derive(Debug)]
 enum State {
@@ -114,7 +109,7 @@ struct Parser<T> {
 }
 
 
-impl<T> Parser<T> where T: Num {
+impl<T> Parser<T> where T: Float {
     pub fn new() -> Parser<T> {
         Parser {
             state: State::None,
@@ -161,7 +156,7 @@ impl<T> Parser<T> where T: Num {
     }
 }
 
-pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: Num {
+pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: Float {
     let p = input.chars().fold(Parser::new(), |p, ch| p.process(ch)).end();
     p.lexemes
 }

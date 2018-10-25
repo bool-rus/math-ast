@@ -5,7 +5,7 @@ use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 use std::fmt::Debug;
-use super::num::Num;
+use super::num::Float;
 
 #[derive(Debug)]
 pub struct BuilderErr<T> (
@@ -37,7 +37,7 @@ pub enum Builder<T> {
 }
 
 
-impl<T> Builder<T> where T: Num + Debug {
+impl<T> Builder<T> where T: Float + Debug {
     pub fn new() -> Builder<T> {
         Builder::Empty
     }
@@ -149,16 +149,16 @@ mod test {
         let lexes = vec![
             Lexem::Letter("x".to_string()),
             make_operand('+'),
-            Lexem::Number(10),
+            Lexem::Number(10f64),
         ];
         let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 5);
+        params.insert("x".to_string(), 5f64);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(15, res);
+        assert_eq!(15f64, res);
     }
 
     #[test]
@@ -166,40 +166,43 @@ mod test {
         let lexes = vec![
             Lexem::Letter("x".to_string()),
             make_operand('-'),
-            Lexem::Number(10),
+            Lexem::Number(10f64),
             make_operand('*'),
             Lexem::Letter("x".to_string()),
             make_operand('+'),
-            Lexem::Number(9)
+            Lexem::Number(9f64)
         ]; //x-10*x+9
         let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 1);
+        params.insert("x".to_string(), 1f64);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(0, res);
+        assert_eq!(0f64, res);
     }
     #[test]
     fn build_mipl() {
+        let x = 1f64;
+        let f10 = 10f64;
+        let f9 = 9f64;
         let lexes = vec![
             Lexem::Letter("x".to_string()),
             make_operand('-'),
-            Lexem::Number(10),
+            Lexem::Number(f10),
             make_operand('-'),
             Lexem::Letter("x".to_string()),
             make_operand('+'),
-            Lexem::Number(9)
+            Lexem::Number(f9)
         ]; //x-10-x+9
         let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 1);
+        params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(-1, res);
+        assert_eq!(x-f10-x+f9, res);
     }
 
     #[test]
@@ -207,21 +210,21 @@ mod test {
         let lexes = vec![
             Lexem::Letter("x".to_string()),
             make_operand('-'),
-            Lexem::Number(3),
+            Lexem::Number(3f64),
             make_operand('*'),
             Lexem::Open,
             Lexem::Letter("x".to_string()),
             make_operand('-'),
-            Lexem::Number(2),
+            Lexem::Number(2f64),
             Lexem::Close,
         ]; //x-3*(x-2)
         let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 1);
+        params.insert("x".to_string(), 1f64);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(4, res);
+        assert_eq!(4f64, res);
     }
 }
