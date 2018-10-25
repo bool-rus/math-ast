@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Баринов Сергей Владимирович <SVBarinov.SBT@sberbank.ru>"]
 
 [dependencies]
+num="*"

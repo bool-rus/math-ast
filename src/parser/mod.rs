@@ -1,3 +1,4 @@
+extern crate num;
 pub mod lexem;
 pub mod syntax;
 pub mod tree;

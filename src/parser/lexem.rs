@@ -1,10 +1,13 @@
 use std::str::FromStr;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
+use std::fmt;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
 use parser::faces::Fun;
+use super::num::Num;
+use super::num::Integer;
+use super::num::Float;
 
-#[derive(Debug)]
 pub enum Lexem<T> {
     Number(T),
     Letter(String),
@@ -12,6 +15,13 @@ pub enum Lexem<T> {
     Open,
     Close,
 }
+
+impl<T> Debug for Lexem<T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        unimplemented!()
+    }
+}
+
 
 impl<T> Lexem<T> {
     fn special(ch: char) -> Option<Lexem<T>> {
@@ -48,14 +58,14 @@ impl Operand {
     }
     pub fn to_fn<T>(self) -> Fun<T>
         where //X: From<Fn(T,T)->T>,
-            T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> + Sub<T, Output=T> + Div<T, Output=T>
+            T: Num
     {
         match self.ch() {
             '+' => Fun::from(|a, b| a + b),
             '-' => Fun::from(|a, b| a - b),
             '*' => Fun::from(|a, b| a * b),
             '/' => Fun::from(|a, b| a / b),
-            '^' => Fun::from(|_,_|unimplemented!()),
+            '^' => Fun::from(|a,b|pow(a,b)),
             _ => unreachable!(),
         }
     }
@@ -67,9 +77,8 @@ impl Operand {
         }
     }
 }
-
-fn pow<T>(a: T, b: T){
-
+fn pow<T>(a: T, b: T) -> T where T: Num {
+    unreachable!();
 }
 
 #[derive(Debug)]
@@ -105,7 +114,7 @@ struct Parser<T> {
 }
 
 
-impl<T> Parser<T> where T: FromStr + Debug, T::Err: Debug {
+impl<T> Parser<T> where T: Num {
     pub fn new() -> Parser<T> {
         Parser {
             state: State::None,
@@ -139,7 +148,7 @@ impl<T> Parser<T> where T: FromStr + Debug, T::Err: Debug {
         if letter.is_empty() {
             return;
         }
-        match letter.parse::<T>() {
+        match <T>::from_str_radix(&letter, 10) {
             Ok(n) => self.lexemes.push(Lexem::Number(n)),
             Err(_) => self.lexemes.push(Lexem::Letter(letter)),
         }
@@ -152,7 +161,7 @@ impl<T> Parser<T> where T: FromStr + Debug, T::Err: Debug {
     }
 }
 
-pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: FromStr + Debug, T::Err: Debug {
+pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: Num {
     let p = input.chars().fold(Parser::new(), |p, ch| p.process(ch)).end();
     p.lexemes
 }

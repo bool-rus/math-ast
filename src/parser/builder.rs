@@ -5,6 +5,7 @@ use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 use std::fmt::Debug;
+use super::num::Num;
 
 #[derive(Debug)]
 pub struct BuilderErr<T> (
@@ -35,7 +36,8 @@ pub enum Builder<T> {
     Body(BB<T>),
 }
 
-impl<T> Builder<T> where T: Debug + Clone + Add<T, Output=T> + Mul<T, Output=T> + Sub<T, Output=T> + Div<T, Output=T> {
+
+impl<T> Builder<T> where T: Num + Debug {
     pub fn new() -> Builder<T> {
         Builder::Empty
     }
