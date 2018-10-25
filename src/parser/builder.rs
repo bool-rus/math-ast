@@ -227,4 +227,27 @@ mod test {
         let res = tree.calculate(&params).unwrap();
         assert_eq!(4f64, res);
     }
+
+    #[test]
+    fn build_power() {
+        let lexes = vec![
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(3f64),
+            make_operand('^'),
+            Lexem::Open,
+            Lexem::Letter("x".to_string()),
+            make_operand('-'),
+            Lexem::Number(2f64),
+            Lexem::Close,
+        ]; //x-3^(x-2)
+        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let tree = b.ast().unwrap();
+        println!("tree: {:?}", tree);
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), 2f64);
+
+        let res = tree.calculate(&params).unwrap();
+        assert_eq!(1_f64, res);
+    }
 }

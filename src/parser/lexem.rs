@@ -62,7 +62,7 @@ impl Operand {
             '-' => Fun::from(|a, b| a - b),
             '*' => Fun::from(|a, b| a * b),
             '/' => Fun::from(|a, b| a / b),
-            '^' => Fun::from(|a,b |unimplemented!()),
+            '^' => Fun::from(|a:T,b:T |a.powf(b)),
             _ => unreachable!(),
         }
     }
