@@ -34,6 +34,7 @@ pub enum Builder<T> {
     Pending(BB<T>, Operand),
     Complete(BB<T>, Operand, BB<T>),
     Body(BB<T>),
+    Fun(String, Vec<Builder<T>>),
 }
 
 
@@ -53,7 +54,8 @@ impl<T> Builder<T> where T: Float + Debug {
             Builder::Simple(bast) => bast,
             b @ Builder::Pending(..) => return b.make_err("expression not complete: operation not closed"),
             Builder::Complete(a, op, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?).into(),
-            b @ Builder::Body(..) => return b.make_err("expected ')'")
+            b @ Builder::Body(..) => return b.make_err("expected ')'"),
+            b @ Builder::Fun(..) => return b.make_err("unclosed Fun"),
         }.into()
     }
     pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
@@ -64,11 +66,12 @@ impl<T> Builder<T> where T: Float + Debug {
             Builder::Pending(a, op) => Self::for_op(a, op, lex),
             Builder::Complete(a, op, b) => Self::for_complex(a, op, b, lex),
             Builder::Body(inner) => Self::for_body(inner,lex),
+            b @ Builder::Fun(..) => return b.make_err("Fun"),
         }.into()
     }
     fn has_body(&self) -> bool {
         match &self {
-            &Builder::Body(..) => true,
+            &Builder::Body(..) | Builder::Fun(..) => true,
             &Builder::Complete(_, _, b) => b.has_body(),
             _ => false,
         }
@@ -101,7 +104,7 @@ impl<T> Builder<T> where T: Float + Debug {
             (b @ Builder::Pending(..), lex) => Ok(
                 Builder::Complete(a, op, b.process(lex)?.into())
             ),
-            (Builder::Simple(..), Lexem::Open) => unreachable!(), //доделать для функции
+            (Builder::Simple(..), Lexem::Open) => unimplemented!(), //TODO: доделать для функции
             (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
                 let b: BB<T> = b.into();
                 if new_op.more(&op) {
@@ -122,6 +125,7 @@ impl<T> Builder<T> where T: Float + Debug {
             } else {
                 Self::simple_err("unexpected lexem")
             }
+            (b @ Builder::Fun(..), lex) => unimplemented!(),
             _ => unreachable!()
         }
     }
@@ -250,4 +254,6 @@ mod test {
         let res = tree.calculate(&params).unwrap();
         assert_eq!(1_f64, res);
     }
+
+
 }

@@ -15,6 +15,7 @@ pub enum Lexem<T> {
     Op(Operand),
     Open,
     Close,
+    Comma,
 }
 
 
@@ -23,6 +24,7 @@ impl<T> Lexem<T> {
         match ch {
             '(' => Some(Lexem::Open),
             ')' => Some(Lexem::Close),
+            ',' => Some(Lexem::Comma),
             _ => Some(Lexem::Op(Operand::from(ch)?))
         }
     }
