@@ -52,7 +52,7 @@ impl<T> Builder<T> where T: Float + Debug {
             Builder::Empty => return Self::simple_err("expression not complete"),
             Builder::Simple(bast) => bast,
             b @ Builder::Pending(..) => return b.make_err("expression not complete: operation not closed"),
-            Builder::Complete(a, op, b) => Ast::Operation(op.to_fn(), a.ast()?, b.ast()?).into(),
+            Builder::Complete(a, op, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?).into(),
             b @ Builder::Body(..) => return b.make_err("expected ')'")
         }.into()
     }

@@ -26,7 +26,7 @@ impl<T> Ast<T> where T: Clone + Add<T, Output=T> + Mul<T,Output=T> + Sub<T, Outp
         Some(match self {
             Ast::Constant(num) => num.clone(),
             Ast::Variable(name) => params.get(name)?.clone(),
-            Ast::Operation(fun,a,b) => fun(a.calculate(params)?, b.calculate(params)?),
+            Ast::Operation(fun,a,b) => fun(vec![a.calculate(params)?, b.calculate(params)?]),
         })
     }
 }
@@ -40,18 +40,20 @@ mod test {
     use parser::faces::Fun;
     use std::collections::HashMap;
     use std::ops::{Add,Sub,Mul,Div};
+    use parser::lexem::Operand;
+    use super::super::num::Float;
 
-    fn plus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Add<T, Output=T> {
-        Box::new(Ast::Operation(Fun::from(|x,y|x+y),a, b))
+    fn plus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
+        Box::new(Ast::Operation(Operand::make_fn::<T>('+'),a, b))
     }
-    fn minus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Sub<T, Output=T> {
-        Box::new(Ast::Operation(Fun::from(|x,y|x-y),a, b))
+    fn minus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
+        Box::new(Ast::Operation(Operand::make_fn::<T>('-'),a, b))
     }
-    fn multiple<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Mul<T, Output=T> {
-        Box::new(Ast::Operation(Fun::from(|x,y|x*y),a, b))
+    fn multiple<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
+        Box::new(Ast::Operation(Operand::make_fn::<T>('*'),a, b))
     }
-    fn divide<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Div<T, Output=T> {
-        Box::new(Ast::Operation(Fun::from(|x,y|x/y),a, b))
+    fn divide<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
+        Box::new(Ast::Operation(Operand::make_fn::<T>('/'),a, b))
     }
     fn constant<T>(t: T) -> BAst<T> {
         Box::new(Ast::Constant(t))
@@ -61,15 +63,15 @@ mod test {
     }
     #[test]
     fn test_tree() {
-        let x = Box::new(constant(1));
+        let x = Box::new(constant(1f64));
         x.calculate(&HashMap::new());
         let tree = plus(
-            constant(60),
+            constant(60f64),
             multiple(
                            minus(
-                               constant(12),
+                               constant(12f64),
                                divide(
-                                   constant(10),
+                                   constant(10f64),
                                    variable("x".to_string())
                                )
                            ),
@@ -78,12 +80,12 @@ mod test {
         ); // 60 + (12-10/x)*y
         println!("tree: {:?}", tree);
         let mut map = HashMap::new();
-        map.insert("x".to_string(), 5);
-        map.insert("y".to_string(), 2);
-        assert_eq!(tree.calculate(&map).unwrap(), 80);
+        map.insert("x".to_string(), 5f64);
+        map.insert("y".to_string(), 2f64);
+        assert_eq!(tree.calculate(&map).unwrap(), 80f64);
 
-        map.insert("x".to_string(), 2);
-        map.insert("y".to_string(), 5);
-        assert_eq!(tree.calculate(&map).unwrap(), 95);
+        map.insert("x".to_string(), 2f64);
+        map.insert("y".to_string(), 5f64);
+        assert_eq!(tree.calculate(&map).unwrap(), 95f64);
     }
 }

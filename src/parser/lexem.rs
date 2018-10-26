@@ -37,6 +37,10 @@ pub enum Operand {
 
 
 impl Operand {
+    #[cfg(test)]
+    pub fn make_fn<T:Float>(ch: char) -> Fun<T>{
+        Self::from(ch).unwrap().into()
+    }
     pub fn more(&self, rhs: &Operand) -> bool {
         match (self, rhs) {
             (Operand::High(..), Operand::Low(..)) => true,
@@ -53,24 +57,24 @@ impl Operand {
             _ => None,
         }
     }
-    pub fn to_fn<T>(self) -> Fun<T>
-        where //X: From<Fn(T,T)->T>,
-            T: Float
-    {
-        match self.ch() {
-            '+' => Fun::from(|a, b| a + b),
-            '-' => Fun::from(|a, b| a - b),
-            '*' => Fun::from(|a, b| a * b),
-            '/' => Fun::from(|a, b| a / b),
-            '^' => Fun::from(|a:T,b:T |a.powf(b)),
-            _ => unreachable!(),
-        }
-    }
     fn ch(self) -> char {
         match self {
             Operand::Low(c) => c,
             Operand::High(c) => c,
             Operand::Highest(c) => c,
+        }
+    }
+}
+
+impl<T:Float> Into<Fun<T>> for Operand {
+    fn into(self) -> Fun<T> {
+        match self.ch() {
+            ch @ '+' => Fun::new(ch,|v| v[0] + v[1]),
+            ch @'-' => Fun::new(ch,|v| v[0] - v[1]),
+            ch @ '*' => Fun::new(ch, |v| v[0] * v[1]),
+            ch @ '/' => Fun::new(ch,|v| v[0] / v[1]),
+            ch @ '^' => Fun::new(ch,|v:Vec<T>|v[0].powf(v[1])),
+            _ => unreachable!(),
         }
     }
 }
