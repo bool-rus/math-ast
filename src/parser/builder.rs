@@ -21,7 +21,8 @@ impl<T> Into<BuildResult<T>> for Builder<T> {
         Ok(self)
     }
 }
-impl<T,O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
+
+impl<T, O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
     fn into(self) -> Result<O, BuilderErr<T>> {
         Err(self)
     }
@@ -30,11 +31,11 @@ impl<T,O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
 #[derive(Debug)]
 pub enum Builder<T> {
     Empty,
-    Simple(BAst<T>),
-    Pending(BB<T>, Operand),
-    Complete(BB<T>, Operand, BB<T>),
+    Simple(Lexem<T>),
+    Complex(Operand, BB<T>, BB<T>),
     Body(BB<T>),
-    Fun(String, Vec<Builder<T>>),
+    Complete(BB<T>),
+    Fun(Lexem<T>, Vec<Builder<T>>),
 }
 
 
@@ -42,101 +43,81 @@ impl<T> Builder<T> where T: Float + Debug {
     pub fn new() -> Builder<T> {
         Builder::Empty
     }
-    fn simple_err<X>(s: &'static str) -> Result<X,BuilderErr<T>>{
-        BuilderErr(s.into(),None).into()
+    fn simple_err<X, S: ToString>(s: S) -> Result<X, BuilderErr<T>> {
+        BuilderErr(s.to_string(), None).into()
     }
-    fn make_err<X>(self, s: &'static str) -> Result<X, BuilderErr<T>> {
-        BuilderErr(s.into(), Some(self)).into()
+    fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr<T>> {
+        BuilderErr(s.to_string(), Some(self)).into()
     }
-    pub fn ast(self) -> Result<BAst<T>,BuilderErr<T>> {
-        match self {
+    pub fn ast(self) -> Result<BAst<T>, BuilderErr<T>> {
+        Ok(match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
-            Builder::Simple(bast) => bast,
-            b @ Builder::Pending(..) => return b.make_err("expression not complete: operation not closed"),
-            Builder::Complete(a, op, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?).into(),
+            Builder::Simple(Lexem::Letter(name)) => Ast::Variable(name),
+            Builder::Simple(Lexem::Number(num)) => Ast::Constant(num),
+            Builder::Simple(_) => unreachable!(),
+            Builder::Complex(op, a, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?),
             b @ Builder::Body(..) => return b.make_err("expected ')'"),
-            b @ Builder::Fun(..) => return b.make_err("unclosed Fun"),
-        }.into()
+            b @ Builder::Fun(..) => unimplemented!(),
+            Builder::Complete(b) => return b.ast(),
+        }.into())
     }
-    pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
-        #[cfg(test)] println!("lex: {:?}, b: {:?}",lex, self);
-        match self {
-            Builder::Empty => Self::for_empty(lex),
-            a @ Builder::Simple(..) => Self::for_simple(a.into(), lex),
-            Builder::Pending(a, op) => Self::for_op(a, op, lex),
-            Builder::Complete(a, op, b) => Self::for_complex(a, op, b, lex),
-            Builder::Body(inner) => Self::for_body(inner,lex),
-            b @ Builder::Fun(..) => return b.make_err("Fun"),
-        }.into()
-    }
-    fn has_body(&self) -> bool {
-        match &self {
-            &Builder::Body(..) | Builder::Fun(..) => true,
-            &Builder::Complete(_, _, b) => b.has_body(),
+    fn want_process(&self, lex: &Lexem<T>) -> bool {
+        match (self, lex) {
+            (Builder::Body(..), _) => true,
+            (Builder::Fun(..), _) => true,
+            (Builder::Empty, _) => true,
+            (Builder::Simple(..), Lexem::Open) => true,
+            (Builder::Complex(_, _, b), _) if b.want_process(lex) => true,
+            (Builder::Complex(op, ..), Lexem::Op(new_op)) if new_op.more(op) => true,
             _ => false,
         }
     }
-    fn for_empty(lex: Lexem<T>) -> BuildResult<T> {
-        match lex {
-            Lexem::Number(num) => Builder::Simple(Ast::Constant(num).into()),
-            Lexem::Letter(name) => Builder::Simple(Ast::Variable(name).into()),
-            Lexem::Open => Builder::Body(Builder::Empty.into()),
-            _ => return BuilderErr(format!("unexpected lexem: {:?}", lex),None).into()
-        }.into()
-    }
-    fn for_simple(a: BB<T>, lex: Lexem<T>) -> BuildResult<T> { //TOD: потом доделать для функции
-        match lex {
-            Lexem::Op(op) =>
-                Builder::Pending(
-                    a,
-                    op,
-                ),
-            l => return BuilderErr(format!("expected lexem after var/const, found {:?}", l),Some(*a)).into()
-        }.into()
-    }
-    fn for_op(a: BB<T>, op: Operand, lex: Lexem<T>) -> BuildResult<T> {
-        Builder::Complete(a, op, Self::for_empty(lex)?.into()).into()
-    }
-    fn for_complex(a: BB<T>, op: Operand, b: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
-        match (*b, lex) {
-            (Builder::Empty, _) => unreachable!(),
-            (b @ Builder::Body(..), lex) |
-            (b @ Builder::Pending(..), lex) => Ok(
-                Builder::Complete(a, op, b.process(lex)?.into())
-            ),
-            (Builder::Simple(..), Lexem::Open) => unimplemented!(), //TODO: доделать для функции
-            (b @ Builder::Simple(..), Lexem::Op(new_op)) => Ok({
-                let b: BB<T> = b.into();
-                if new_op.more(&op) {
-                    Builder::Complete(a, op, Builder::Pending(b, new_op).into())
-                } else {
-                    Builder::Pending(Builder::Complete(a, op, b).into(), new_op)
-                }
-            }),
-            (b @ Builder::Complete(..), Lexem::Op(new_op)) => Ok({
-                if new_op > op || b.has_body() {
-                    Builder::Complete(a, op, b.process(Lexem::Op(new_op))?.into())
-                } else {
-                    Builder::Pending(Builder::Complete(a, op, b.into()).into(), new_op)
-                }
-            }),
-            (b @ Builder::Complete(..), lex) => if b.has_body() {
-                Builder::Complete(a, op, b.process(lex)?.into()).into()
+    pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
+        #[cfg(test)] println!("lex: {:?}, b: {:?}", lex, self);
+        match (self, lex) {
+            (Builder::Empty, lex @ Lexem::Number(_)) |
+            (Builder::Empty, lex @ Lexem::Letter(_)) => Builder::Simple(lex),
+            (Builder::Empty, Lexem::Open) => Builder::Body(Builder::Empty.into()),
+            (a @ Builder::Complete(..), Lexem::Op(op)) |
+            (a @ Builder::Simple(..), Lexem::Op(op)) => Builder::Complex(op, a.into(), Builder::Empty.into()),
+            (Builder::Simple(fun), Lexem::Open) => Builder::Fun(fun, vec![Builder::Empty]),
+            (Builder::Complex(op, a, b), Lexem::Op(new_op)) => if b.want_process(&Lexem::Op(new_op)) || new_op.more(&op) {
+                Builder::Complex(op, a, b.process(Lexem::Op(new_op))?.into())
             } else {
-                Self::simple_err("unexpected lexem")
-            }
-            (b @ Builder::Fun(..), lex) => unimplemented!(),
-            _ => unreachable!()
-        }
-    }
-    fn for_body(inner: BB<T>, lex: Lexem<T>) -> BuildResult<T> {
-        match &lex {
-            &Lexem::Close if !inner.has_body() => Builder::Simple(inner.ast()?),
-            _ => Builder::Body(inner.process(lex)?.into()),
+                Builder::Complex(new_op, Builder::Complex(op, a, b).into(), Builder::Empty.into())
+            },
+            (Builder::Complex(op, a, b), lex) => Builder::Complex(op,a,b.process(lex)?.into()),
+            (Builder::Body(inner), lex @ Lexem::Close) => if inner.want_process(&lex) {
+                Builder::Body(inner.process(lex)?.into())
+            } else {
+                Builder::Complete(inner)
+            },
+            (Builder::Body(inner), lex) => Builder::Body(inner.process(lex)?.into()),
+            (Builder::Fun(name, v), lex @ Lexem::Close) => {
+                if v.last().unwrap().want_process(&lex) {
+                    Self::fun_delegate_inner(name, v, lex)?
+                } else {
+                    Builder::Complete(Builder::Fun(name, v).into())
+                }
+            },
+            (Builder::Fun(name, mut v), lex @ Lexem::Comma) => {
+                if v.last().unwrap().want_process(&lex) {
+                    Self::fun_delegate_inner(name, v, lex)?
+                } else {
+                    v.push(Builder::Empty);
+                    Builder::Fun(name, v)
+                }
+            },
+            (Builder::Fun(name, v), lex) => Self::fun_delegate_inner(name, v, lex)?,
+            (b, lex) => return b.make_err(format!("Unexpected lexem {:?}", lex)),
         }.into()
+    }
+    fn fun_delegate_inner(name: Lexem<T>, mut v: Vec<Builder<T>>, lex: Lexem<T>) -> BuildResult<T> {
+        let inner = v.pop().unwrap().process(lex)?;
+        v.push(inner);
+        Ok(Builder::Fun(name, v))
     }
 }
-
 
 
 #[cfg(test)]
@@ -146,7 +127,13 @@ mod test {
     use std::collections::HashMap;
     use parser::lexem::Operand;
     use parser::builder::Builder;
+    use parser::builder::BuildResult;
+    use super::super::num::Float;
+    use std::fmt::Debug;
 
+    fn parse_lexemes<T: Float + Debug>(v: Vec<Lexem<T>>) -> BuildResult<T> {
+        v.into_iter().fold(Ok(Builder::Empty), |b, lex| Ok(b?.process(lex)?))
+    }
 
     #[test]
     fn build_plus() {
@@ -185,6 +172,7 @@ mod test {
         let res = tree.calculate(&params).unwrap();
         assert_eq!(0f64, res);
     }
+
     #[test]
     fn build_mipl() {
         let x = 1f64;
@@ -206,7 +194,7 @@ mod test {
         params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(x-f10-x+f9, res);
+        assert_eq!(x - f10 - x + f9, res);
     }
 
     #[test]
@@ -255,5 +243,21 @@ mod test {
         assert_eq!(1_f64, res);
     }
 
+    #[test]
+    fn build_sin() {
+        //sin(x)
+        let lexes = vec![
+            Lexem::Letter("sin".to_string()),
+            Lexem::Open,
+            Lexem::Letter("x".to_string()),
+            Lexem::Close,
+        ];
+        let x = 0.3;
+        let mut params = HashMap::new();
+        params.insert("x".to_string(), x);
 
+        let b = parse_lexemes(lexes).unwrap();
+        let tree = b.ast().unwrap();
+        assert_eq!(x.sin(), tree.calculate(&params).unwrap());
+    }
 }
