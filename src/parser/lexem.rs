@@ -37,6 +37,15 @@ pub enum Operand {
     Highest(char),
 }
 
+impl ToString for Operand {
+    fn to_string(&self) -> String {
+        match self {
+            Operand::Low(ch) => ch,
+            Operand::High(ch) => ch,
+            Operand::Highest(ch) => ch,
+        }.to_string()
+    }
+}
 
 impl Operand {
     #[cfg(test)]
@@ -181,4 +190,5 @@ fn test_parse() {
         s + 1
     });
 }
+
 

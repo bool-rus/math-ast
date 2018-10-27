@@ -35,11 +35,11 @@ pub enum Builder<T> {
     Complex(Operand, BB<T>, BB<T>),
     Body(BB<T>),
     Complete(BB<T>),
-    Fun(Lexem<T>, Vec<Builder<T>>),
+    Fun(String, Vec<Builder<T>>),
 }
 
 
-impl<T> Builder<T> where T: Float + Debug {
+impl<T> Builder<T> where T: Float + Debug + ToString {
     pub fn new() -> Builder<T> {
         Builder::Empty
     }
@@ -80,7 +80,7 @@ impl<T> Builder<T> where T: Float + Debug {
             (Builder::Empty, Lexem::Open) => Builder::Body(Builder::Empty.into()),
             (a @ Builder::Complete(..), Lexem::Op(op)) |
             (a @ Builder::Simple(..), Lexem::Op(op)) => Builder::Complex(op, a.into(), Builder::Empty.into()),
-            (Builder::Simple(fun), Lexem::Open) => Builder::Fun(fun, vec![Builder::Empty]),
+            (Builder::Simple(Lexem::Letter(fun)), Lexem::Open) => Builder::Fun(fun, vec![Builder::Empty]),
             (Builder::Complex(op, a, b), Lexem::Op(new_op)) => if b.want_process(&Lexem::Op(new_op)) || new_op.more(&op) {
                 Builder::Complex(op, a, b.process(Lexem::Op(new_op))?.into())
             } else {
@@ -112,7 +112,7 @@ impl<T> Builder<T> where T: Float + Debug {
             (b, lex) => return b.make_err(format!("Unexpected lexem {:?}", lex)),
         }.into()
     }
-    fn fun_delegate_inner(name: Lexem<T>, mut v: Vec<Builder<T>>, lex: Lexem<T>) -> BuildResult<T> {
+    fn fun_delegate_inner(name: String, mut v: Vec<Builder<T>>, lex: Lexem<T>) -> BuildResult<T> {
         let inner = v.pop().unwrap().process(lex)?;
         v.push(inner);
         Ok(Builder::Fun(name, v))
@@ -130,8 +130,9 @@ mod test {
     use parser::builder::BuildResult;
     use super::super::num::Float;
     use std::fmt::Debug;
+    use std::fmt::Display;
 
-    fn parse_lexemes<T: Float + Debug>(v: Vec<Lexem<T>>) -> BuildResult<T> {
+    fn parse_lexemes<T: Float + Debug + Display>(v: Vec<Lexem<T>>) -> BuildResult<T> {
         v.into_iter().fold(Ok(Builder::Empty), |b, lex| Ok(b?.process(lex)?))
     }
 
@@ -245,8 +246,10 @@ mod test {
 
     #[test]
     fn build_sin() {
-        //sin(x)
+        //5*sin(x)
         let lexes = vec![
+            Lexem::Number(5f64),
+            make_operand('*'),
             Lexem::Letter("sin".to_string()),
             Lexem::Open,
             Lexem::Letter("x".to_string()),
@@ -257,7 +260,14 @@ mod test {
         params.insert("x".to_string(), x);
 
         let b = parse_lexemes(lexes).unwrap();
-        let tree = b.ast().unwrap();
-        assert_eq!(x.sin(), tree.calculate(&params).unwrap());
+        let expected = Builder::Complex(Operand::High('*'),
+                                        Builder::Simple(Lexem::Number(5.0)).into(),
+                                        Builder::Complete(
+                                            Builder::Fun("sin".to_string(), vec![
+                                                Builder::Simple(Lexem::Letter("x".to_string()))
+                                            ]).into()
+                                        ).into()
+        );
+        assert_eq!(format!("{:?}",b), format!("{:?}",expected))
     }
 }
