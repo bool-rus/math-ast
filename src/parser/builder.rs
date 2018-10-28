@@ -50,7 +50,7 @@ impl Builder {
     fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), Some(self)).into()
     }
-    pub fn ast<T>(self) -> Result<BAst<T>, BuilderErr> where T: Float + Debug {
+    pub fn ast<T>(self) -> Result<Ast<T>, BuilderErr> where T: Float + Debug {
         Ok(match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
             Builder::Simple(Lexem::Letter(inner)) => match T::from_str_radix(&inner, 10) {
@@ -58,11 +58,14 @@ impl Builder {
                 Err(_) => Ast::Variable(inner),
             },
             Builder::Simple(_) => unreachable!(),
-            Builder::Complex(op, a, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?),
+            Builder::Complex(op, a, b) => Ast::Operation(op.into(), vec![a.ast()?, b.ast()?]),
             b @ Builder::Body(..) => return b.make_err("expected ')'"),
-            b @ Builder::Fun(..) => unimplemented!(),
-            Builder::Complete(b) => return b.ast(),
-        }.into())
+            b @ Builder::Fun(..) => unreachable!(), //см обработку Complete
+            Builder::Complete(b) => match *b {
+                b @ Builder::Fun(..) => unimplemented!(),
+                b => b.ast()?,
+            },
+        })
     }
     fn want_process(&self, lex: &Lexem) -> bool {
         match (self, lex) {
@@ -226,5 +229,15 @@ mod test {
                                         ).into()
         );
         assert_eq!(format!("{:?}",b), format!("{:?}",expected))
+    }
+
+    #[test]
+    fn multiple_fun() {
+        let x = 0.3;
+        let b = Builder::from_str("sin(x)^2 +cos(x)^2").unwrap();
+        let mut params = HashMap::new();
+        let ast = b.ast().unwrap();
+        params.insert("x".to_string(), x);
+        assert_eq!(1.0, ast.calculate(&params).unwrap());
     }
 }

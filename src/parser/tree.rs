@@ -3,6 +3,7 @@ extern crate std;
 use std::collections::HashMap;
 use std::ops::{Add, Neg, Mul, Div, Sub};
 use parser::faces::Fun;
+use super::num::Float;
 
 pub type BAst<T> = Box<Ast<T>>;
 
@@ -18,15 +19,21 @@ impl<T,E> Into<Result<BAst<T>,E>> for BAst<T> {
 pub enum Ast<T> {
     Constant(T),
     Variable(String),
-    Operation(Fun<T>, BAst<T>, BAst<T>),
+    Operation(Fun<T>, Vec<Ast<T>>),
 }
 
-impl<T> Ast<T> where T: Clone + Add<T, Output=T> + Mul<T,Output=T> + Sub<T, Output=T> + Div<T, Output = T>{
+impl<T> Ast<T> where T: Float {
     pub fn calculate(&self, params: &HashMap<String, T>) -> Option<T> {
         Some(match self {
             Ast::Constant(num) => num.clone(),
             Ast::Variable(name) => params.get(name)?.clone(),
-            Ast::Operation(fun,a,b) => fun(vec![a.calculate(params)?, b.calculate(params)?]),
+            Ast::Operation(fun,v) => {
+                let mut args = Vec::with_capacity(v.len());
+                for ast in v {
+                    args.push(ast.calculate(&params)?)
+                }
+                fun(args)
+            },
         })
     }
 }
@@ -43,28 +50,26 @@ mod test {
     use parser::lexem::Operand;
     use super::super::num::Float;
 
-    fn plus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
-        Box::new(Ast::Operation(Operand::make_fn::<T>('+'),a, b))
+    fn plus<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+        Ast::Operation(Operand::make_fn::<T>('+'),vec![a, b])
     }
-    fn minus<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
-        Box::new(Ast::Operation(Operand::make_fn::<T>('-'),a, b))
+    fn minus<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+        Ast::Operation(Operand::make_fn::<T>('-'),vec![a, b])
     }
-    fn multiple<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
-        Box::new(Ast::Operation(Operand::make_fn::<T>('*'),a, b))
+    fn multiple<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+        Ast::Operation(Operand::make_fn::<T>('*'),vec![a, b])
     }
-    fn divide<T>(a: BAst<T>, b: BAst<T>) -> BAst<T> where T: Float {
-        Box::new(Ast::Operation(Operand::make_fn::<T>('/'),a, b))
+    fn divide<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+        Ast::Operation(Operand::make_fn::<T>('/'),vec![a, b])
     }
-    fn constant<T>(t: T) -> BAst<T> {
-        Box::new(Ast::Constant(t))
+    fn constant<T>(t: T) -> Ast<T> {
+        Ast::Constant(t)
     }
-    fn variable<T>(name: String) -> BAst<T> {
-        Box::new(Ast::Variable(name))
+    fn variable<T>(name: String) -> Ast<T> {
+        Ast::Variable(name)
     }
     #[test]
     fn test_tree() {
-        let x = Box::new(constant(1f64));
-        x.calculate(&HashMap::new());
         let tree = plus(
             constant(60f64),
             multiple(
