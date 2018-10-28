@@ -9,8 +9,7 @@ use super::num::Integer;
 use super::num::Float;
 
 #[derive(Debug)]
-pub enum Lexem<T> {
-    Number(T),
+pub enum Lexem {
     Letter(String),
     Op(Operand),
     Open,
@@ -19,8 +18,8 @@ pub enum Lexem<T> {
 }
 
 
-impl<T> Lexem<T> {
-    fn special(ch: char) -> Option<Lexem<T>> {
+impl Lexem {
+    fn special(ch: char) -> Option<Lexem> {
         match ch {
             '(' => Some(Lexem::Open),
             ')' => Some(Lexem::Close),
@@ -102,7 +101,7 @@ impl From<char> for State {
     fn from(ch: char) -> Self {
         match ch {
             '0' | '.' | '1'...'9' | 'a'...'z' | 'A'...'Z' => State::Letter,
-            ch if !Lexem::<u8>::special(ch).is_none()  => State::Special,
+            ch if !Lexem::special(ch).is_none()  => State::Special,
             _ => State::None
         }
     }
@@ -117,15 +116,15 @@ impl State {
     }
 }
 
-struct Parser<T> {
+struct Parser {
     state: State,
-    lexemes: Vec<Lexem<T>>,
+    lexemes: Vec<Lexem>,
     buf: String,
 }
 
 
-impl<T> Parser<T> where T: Float {
-    pub fn new() -> Parser<T> {
+impl Parser {
+    pub fn new() -> Parser {
         Parser {
             state: State::None,
             lexemes: Vec::new(),
@@ -158,10 +157,7 @@ impl<T> Parser<T> where T: Float {
         if letter.is_empty() {
             return;
         }
-        match <T>::from_str_radix(&letter, 10) {
-            Ok(n) => self.lexemes.push(Lexem::Number(n)),
-            Err(_) => self.lexemes.push(Lexem::Letter(letter)),
-        }
+        self.lexemes.push(Lexem::Letter(letter));
     }
     pub fn end(mut self) -> Self {
         let letter = self.buf;
@@ -171,20 +167,20 @@ impl<T> Parser<T> where T: Float {
     }
 }
 
-pub fn parse<T>(input: String) -> Vec<Lexem<T>> where T: Float {
+pub fn parse(input: &str) -> Vec<Lexem> {
     let p = input.chars().fold(Parser::new(), |p, ch| p.process(ch)).end();
     p.lexemes
 }
 
 
 #[cfg(test)]
-pub fn make_operand<T>(ch: char) -> Lexem<T> {
+pub fn make_operand(ch: char) -> Lexem {
     Lexem::Op(Operand::from(ch).unwrap())
 }
 
 #[test]
 fn test_parse() {
-    let v = parse::<f64>("y8 - x + y/(8*6.38 - 5)-5x+y8".to_string());
+    let v = parse("y8 - x + y/(8*6.38 - 5)-5x+y8");
     v.iter().fold(0, |s, l| {
         println!("{:?}", l);
         s + 1

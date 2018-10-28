@@ -6,54 +6,57 @@ use std::ops::Mul;
 use std::ops::Sub;
 use std::fmt::Debug;
 use super::num::Float;
+use std::str::FromStr;
 
 #[derive(Debug)]
-pub struct BuilderErr<T> (
+pub struct BuilderErr (
     String,
-    Option<Builder<T>>,
+    Option<Builder>,
 );
 
-type BuildResult<T> = Result<Builder<T>, BuilderErr<T>>;
-type BB<T> = Box<Builder<T>>;
+type BuildResult = Result<Builder, BuilderErr>;
+type BB = Box<Builder>;
 
-impl<T> Into<BuildResult<T>> for Builder<T> {
-    fn into(self) -> BuildResult<T> {
+impl Into<BuildResult> for Builder {
+    fn into(self) -> BuildResult {
         Ok(self)
     }
 }
 
-impl<T, O> Into<Result<O, BuilderErr<T>>> for BuilderErr<T> {
-    fn into(self) -> Result<O, BuilderErr<T>> {
+impl<O> Into<Result<O, BuilderErr>> for BuilderErr {
+    fn into(self) -> Result<O, BuilderErr> {
         Err(self)
     }
 }
 
 #[derive(Debug)]
-pub enum Builder<T> {
+pub enum Builder {
     Empty,
-    Simple(Lexem<T>),
-    Complex(Operand, BB<T>, BB<T>),
-    Body(BB<T>),
-    Complete(BB<T>),
-    Fun(String, Vec<Builder<T>>),
+    Simple(Lexem),
+    Complex(Operand, BB, BB),
+    Body(BB),
+    Complete(BB),
+    Fun(String, Vec<Builder>),
 }
 
 
-impl<T> Builder<T> where T: Float + Debug + ToString {
-    pub fn new() -> Builder<T> {
+impl Builder {
+    pub fn new() -> Builder {
         Builder::Empty
     }
-    fn simple_err<X, S: ToString>(s: S) -> Result<X, BuilderErr<T>> {
+    fn simple_err<X, S: ToString>(s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), None).into()
     }
-    fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr<T>> {
+    fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), Some(self)).into()
     }
-    pub fn ast(self) -> Result<BAst<T>, BuilderErr<T>> {
+    pub fn ast<T>(self) -> Result<BAst<T>, BuilderErr> where T: Float + Debug {
         Ok(match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
-            Builder::Simple(Lexem::Letter(name)) => Ast::Variable(name),
-            Builder::Simple(Lexem::Number(num)) => Ast::Constant(num),
+            Builder::Simple(Lexem::Letter(inner)) => match T::from_str_radix(&inner, 10) {
+                Ok(num) => Ast::Constant(num),
+                Err(_) => Ast::Variable(inner),
+            },
             Builder::Simple(_) => unreachable!(),
             Builder::Complex(op, a, b) => Ast::Operation(op.into(), a.ast()?, b.ast()?),
             b @ Builder::Body(..) => return b.make_err("expected ')'"),
@@ -61,7 +64,7 @@ impl<T> Builder<T> where T: Float + Debug + ToString {
             Builder::Complete(b) => return b.ast(),
         }.into())
     }
-    fn want_process(&self, lex: &Lexem<T>) -> bool {
+    fn want_process(&self, lex: &Lexem) -> bool {
         match (self, lex) {
             (Builder::Body(..), _) => true,
             (Builder::Fun(..), _) => true,
@@ -72,10 +75,9 @@ impl<T> Builder<T> where T: Float + Debug + ToString {
             _ => false,
         }
     }
-    pub fn process(self, lex: Lexem<T>) -> BuildResult<T> {
+    pub fn process(self, lex: Lexem) -> BuildResult {
         #[cfg(test)] println!("lex: {:?}, b: {:?}", lex, self);
         match (self, lex) {
-            (Builder::Empty, lex @ Lexem::Number(_)) |
             (Builder::Empty, lex @ Lexem::Letter(_)) => Builder::Simple(lex),
             (Builder::Empty, Lexem::Open) => Builder::Body(Builder::Empty.into()),
             (a @ Builder::Complete(..), Lexem::Op(op)) |
@@ -112,10 +114,18 @@ impl<T> Builder<T> where T: Float + Debug + ToString {
             (b, lex) => return b.make_err(format!("Unexpected lexem {:?}", lex)),
         }.into()
     }
-    fn fun_delegate_inner(name: String, mut v: Vec<Builder<T>>, lex: Lexem<T>) -> BuildResult<T> {
+    fn fun_delegate_inner(name: String, mut v: Vec<Builder>, lex: Lexem) -> BuildResult {
         let inner = v.pop().unwrap().process(lex)?;
         v.push(inner);
         Ok(Builder::Fun(name, v))
+    }
+}
+
+impl FromStr for Builder {
+    type Err = BuilderErr;
+
+    fn from_str(s: &str) -> BuildResult {
+        parse(s).into_iter().fold(Ok(Builder::new()), |b, lex| b?.process(lex))
     }
 }
 
@@ -131,19 +141,11 @@ mod test {
     use super::super::num::Float;
     use std::fmt::Debug;
     use std::fmt::Display;
-
-    fn parse_lexemes<T: Float + Debug + Display>(v: Vec<Lexem<T>>) -> BuildResult<T> {
-        v.into_iter().fold(Ok(Builder::Empty), |b, lex| Ok(b?.process(lex)?))
-    }
+    use std::str::FromStr;
 
     #[test]
     fn build_plus() {
-        let lexes = vec![
-            Lexem::Letter("x".to_string()),
-            make_operand('+'),
-            Lexem::Number(10f64),
-        ];
-        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let b = Builder::from_str("x + 10").unwrap();
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
@@ -155,16 +157,7 @@ mod test {
 
     #[test]
     fn build_ord() {
-        let lexes = vec![
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(10f64),
-            make_operand('*'),
-            Lexem::Letter("x".to_string()),
-            make_operand('+'),
-            Lexem::Number(9f64)
-        ]; //x-10*x+9
-        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let b = Builder::from_str("x-10*x+9").unwrap();
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
@@ -177,91 +170,55 @@ mod test {
     #[test]
     fn build_mipl() {
         let x = 1f64;
-        let f10 = 10f64;
-        let f9 = 9f64;
-        let lexes = vec![
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(f10),
-            make_operand('-'),
-            Lexem::Letter("x".to_string()),
-            make_operand('+'),
-            Lexem::Number(f9)
-        ]; //x-10-x+9
-        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let b = Builder::from_str("x - 10+9").unwrap();
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
         params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(x - f10 - x + f9, res);
+        assert_eq!(x - 10.0 + 9.0, res);
     }
 
     #[test]
     fn build_brackets() {
-        let lexes = vec![
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(3f64),
-            make_operand('*'),
-            Lexem::Open,
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(2f64),
-            Lexem::Close,
-        ]; //x-3*(x-2)
-        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let x = 1f64;
+        let b = Builder::from_str("x -3*(x-2)").unwrap();
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 1f64);
+
+
+        params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(4f64, res);
+        assert_eq!(x-3.0*(x-2.0), res);
     }
 
     #[test]
     fn build_power() {
-        let lexes = vec![
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(3f64),
-            make_operand('^'),
-            Lexem::Open,
-            Lexem::Letter("x".to_string()),
-            make_operand('-'),
-            Lexem::Number(2f64),
-            Lexem::Close,
-        ]; //x-3^(x-2)
-        let b = lexes.into_iter().fold(Builder::new(), |b, lex| b.process(lex).unwrap());
+        let x = 2f64;
+        let b = Builder::from_str("x -3^(x-2)").unwrap();
         let tree = b.ast().unwrap();
         println!("tree: {:?}", tree);
         let mut params = HashMap::new();
-        params.insert("x".to_string(), 2f64);
+        params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(1_f64, res);
+        assert_eq!(x-3.0.powf(x-2.0), res);
     }
 
     #[test]
     fn build_sin() {
         //5*sin(x)
-        let lexes = vec![
-            Lexem::Number(5f64),
-            make_operand('*'),
-            Lexem::Letter("sin".to_string()),
-            Lexem::Open,
-            Lexem::Letter("x".to_string()),
-            Lexem::Close,
-        ];
+
         let x = 0.3;
+        let b = Builder::from_str("5*sin(x)").unwrap();
         let mut params = HashMap::new();
         params.insert("x".to_string(), x);
 
-        let b = parse_lexemes(lexes).unwrap();
         let expected = Builder::Complex(Operand::High('*'),
-                                        Builder::Simple(Lexem::Number(5.0)).into(),
+                                        Builder::Simple(Lexem::Letter("5".to_string())).into(),
                                         Builder::Complete(
                                             Builder::Fun("sin".to_string(), vec![
                                                 Builder::Simple(Lexem::Letter("x".to_string()))
