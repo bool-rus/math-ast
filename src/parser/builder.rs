@@ -1,12 +1,10 @@
 use super::tree::*;
 use super::lexem::*;
-use std::ops::Add;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Sub;
 use std::fmt::Debug;
 use super::num::Float;
 use std::str::FromStr;
+use parser::faces::Fun;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct BuilderErr (
@@ -44,13 +42,21 @@ impl Builder {
     pub fn new() -> Builder {
         Builder::Empty
     }
+
+    fn functions<T: Float>() -> HashMap<String, Fun<T>> {
+        let mut map = HashMap::new();
+        map.insert("sin".to_string(), Fun::new("sin", |v: Vec<T>| v.first().unwrap().sin()));
+        map.insert("cos".to_string(), Fun::new("cos", |v: Vec<T>| v.first().unwrap().cos()));
+        map
+    }
+
     fn simple_err<X, S: ToString>(s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), None).into()
     }
     fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), Some(self)).into()
     }
-    pub fn ast<T>(self) -> Result<Ast<T>, BuilderErr> where T: Float + Debug {
+    pub fn ast<T>(self) -> Result<Ast<T>, BuilderErr> where T: Float {
         Ok(match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
             Builder::Simple(Lexem::Letter(inner)) => match T::from_str_radix(&inner, 10) {
@@ -59,13 +65,26 @@ impl Builder {
             },
             Builder::Simple(_) => unreachable!(),
             Builder::Complex(op, a, b) => Ast::Operation(op.into(), vec![a.ast()?, b.ast()?]),
-            b @ Builder::Body(..) => return b.make_err("expected ')'"),
-            b @ Builder::Fun(..) => unreachable!(), //см обработку Complete
-            Builder::Complete(b) => match *b {
-                b @ Builder::Fun(..) => unimplemented!(),
-                b => b.ast()?,
-            },
+            b @ Builder::Body(..) => b.make_err("expected ')'")?,
+            Builder::Fun(..) => unreachable!(), //см обработку Complete
+            Builder::Complete(inner) => inner.ast_inner()?,
         })
+    }
+    fn ast_inner<T: Float>(self) -> Result<Ast<T>,BuilderErr> {
+        match self {
+            Builder::Fun(name,v) => {
+                let fun = match Self::functions().remove(&name) {
+                    None => Self::simple_err(format!("Function {} not found", name))?,
+                    Some(x) => x,
+                };
+                let mut builders = Vec::with_capacity(v.len());
+                for b in v {
+                    builders.push(b.ast()?);
+                }
+                Ok(Ast::Operation(fun, builders))
+            },
+            b => b.ast(),
+        }
     }
     fn want_process(&self, lex: &Lexem) -> bool {
         match (self, lex) {
@@ -136,7 +155,6 @@ impl FromStr for Builder {
 #[cfg(test)]
 mod test {
     use parser::lexem::Lexem;
-    use parser::lexem::make_operand;
     use std::collections::HashMap;
     use parser::lexem::Operand;
     use parser::builder::Builder;

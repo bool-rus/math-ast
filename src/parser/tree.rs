@@ -1,17 +1,8 @@
 extern crate std;
 
 use std::collections::HashMap;
-use std::ops::{Add, Neg, Mul, Div, Sub};
 use parser::faces::Fun;
 use super::num::Float;
-
-pub type BAst<T> = Box<Ast<T>>;
-
-impl<T,E> Into<Result<BAst<T>,E>> for BAst<T> {
-    fn into(self) -> Result<Box<Ast<T>>, E> {
-        Ok(self)
-    }
-}
 
 
 //*
@@ -42,11 +33,9 @@ impl<T> Ast<T> where T: Float {
 
 #[cfg(test)]
 mod test {
-    use parser::tree::BAst;
     use parser::tree::Ast;
     use parser::faces::Fun;
     use std::collections::HashMap;
-    use std::ops::{Add,Sub,Mul,Div};
     use parser::lexem::Operand;
     use super::super::num::Float;
 

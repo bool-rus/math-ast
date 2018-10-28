@@ -1,6 +1,5 @@
 use std::str::FromStr;
 use std::fmt::{Debug, Formatter};
-use std::fmt;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
 use parser::faces::Fun;
@@ -107,15 +106,6 @@ impl From<char> for State {
     }
 }
 
-impl State {
-    fn is_none(&self) -> bool {
-        match self {
-            State::None => true,
-            _ => false,
-        }
-    }
-}
-
 struct Parser {
     state: State,
     lexemes: Vec<Lexem>,
@@ -173,10 +163,7 @@ pub fn parse(input: &str) -> Vec<Lexem> {
 }
 
 
-#[cfg(test)]
-pub fn make_operand(ch: char) -> Lexem {
-    Lexem::Op(Operand::from(ch).unwrap())
-}
+
 
 #[test]
 fn test_parse() {
