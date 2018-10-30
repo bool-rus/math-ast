@@ -1,19 +1,20 @@
 extern crate std;
 
 use std::collections::HashMap;
-use parser::faces::Fun;
+use parser::faces::Function;
 use super::num::Float;
+use std::fmt::Debug;
 
 
 //*
 #[derive(Debug)]
-pub enum Ast<T> {
+pub enum Ast<T:Sized> {
     Constant(T),
     Variable(String),
-    Operation(Fun<T>, Vec<Ast<T>>),
+    Operation(Box<Function<T>>, Vec<Ast<T>>),
 }
 
-impl<T> Ast<T> where T: Float {
+impl<T> Ast<T> where T: Sized + Clone {
     pub fn calculate(&self, params: &HashMap<String, T>) -> Option<T> {
         Some(match self {
             Ast::Constant(num) => num.clone(),
@@ -23,35 +24,55 @@ impl<T> Ast<T> where T: Float {
                 for ast in v {
                     args.push(ast.calculate(&params)?)
                 }
-                fun(args)
+                fun.call(args)
             },
         })
     }
 }
-//*/
+
+#[derive(Debug)]
+struct AstFunction<T: Sized + Debug> {
+    name: String,
+    args_count: usize,
+    ast: Ast<T>
+}
+
+impl<T: Float + Sized + Debug> Function<T> for AstFunction<T> {
+    fn name(&self) -> &str {
+        unimplemented!()
+    }
+
+    fn args_count(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn call(&self, args: Vec<T>) -> T {
+        unimplemented!()
+    }
+}
 
 
 #[cfg(test)]
 mod test {
     use parser::tree::Ast;
-    use parser::faces::Fun;
+    use parser::faces::Function;
     use std::collections::HashMap;
     use parser::lexem::Operand;
     use super::super::num::Float;
 
-    fn plus<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+    fn plus<T:'static+Float>(a: Ast<T>, b: Ast<T>) -> Ast<T> {
         Ast::Operation(Operand::make_fn::<T>('+'),vec![a, b])
     }
-    fn minus<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+    fn minus<T:'static+Float>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
         Ast::Operation(Operand::make_fn::<T>('-'),vec![a, b])
     }
-    fn multiple<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+    fn multiple<T:'static + Float>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
         Ast::Operation(Operand::make_fn::<T>('*'),vec![a, b])
     }
-    fn divide<T>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
+    fn divide<T:'static + Float>(a: Ast<T>, b: Ast<T>) -> Ast<T> where T: Float {
         Ast::Operation(Operand::make_fn::<T>('/'),vec![a, b])
     }
-    fn constant<T>(t: T) -> Ast<T> {
+    fn constant<T:'static+Float>(t: T) -> Ast<T> {
         Ast::Constant(t)
     }
     fn variable<T>(name: String) -> Ast<T> {

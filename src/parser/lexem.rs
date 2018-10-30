@@ -2,10 +2,11 @@ use std::str::FromStr;
 use std::fmt::{Debug, Formatter};
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div};
-use parser::faces::Fun;
+use parser::faces::Function;
 use super::num::Num;
 use super::num::Integer;
 use super::num::Float;
+use parser::faces::FnFunction;
 
 #[derive(Debug)]
 pub enum Lexem {
@@ -47,7 +48,7 @@ impl ToString for Operand {
 
 impl Operand {
     #[cfg(test)]
-    pub fn make_fn<T:Float>(ch: char) -> Fun<T>{
+    pub fn make_fn<T:'static + Float + Sized>(ch: char) -> Box<Function<T>> {
         Self::from(ch).unwrap().into()
     }
     pub fn more(&self, rhs: &Operand) -> bool {
@@ -75,14 +76,32 @@ impl Operand {
     }
 }
 
-impl<T:Float> Into<Fun<T>> for Operand {
-    fn into(self) -> Fun<T> {
+impl Operand {
+    fn add<T:Float>(args: Vec<T>) -> T {
+        args[0]+args[1]
+    }
+    fn sub<T:Float>(args: Vec<T>) -> T {
+        args[0]-args[1]
+    }
+    fn mul<T:Float>(args: Vec<T>) -> T {
+        args[0]*args[1]
+    }
+    fn div<T:Float>(args: Vec<T>) -> T {
+        args[0]/args[1]
+    }
+    fn pow<T:Float>(args: Vec<T>) -> T {
+        args[0].powf(args[1])
+    }
+}
+
+impl<T:'static + Float + Sized> Into<Box<Function<T>>> for Operand {
+    fn into(self) -> Box<Function<T>> {
         match self.ch() {
-            ch @ '+' => Fun::new(ch,|v| v[0] + v[1]),
-            ch @'-' => Fun::new(ch,|v| v[0] - v[1]),
-            ch @ '*' => Fun::new(ch, |v| v[0] * v[1]),
-            ch @ '/' => Fun::new(ch,|v| v[0] / v[1]),
-            ch @ '^' => Fun::new(ch,|v:Vec<T>|v[0].powf(v[1])),
+            ch @ '+' => FnFunction::new(ch, &Self::add),
+            ch @'-' => FnFunction::new(ch, &Self::sub),
+            ch @ '*' => FnFunction::new(ch, &Self::mul),
+            ch @ '/' => FnFunction::new(ch, &Self::div),
+            ch @ '^' => FnFunction::new(ch, &Self::pow),
             _ => unreachable!(),
         }
     }

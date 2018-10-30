@@ -3,8 +3,9 @@ use super::lexem::*;
 use std::fmt::Debug;
 use super::num::Float;
 use std::str::FromStr;
-use parser::faces::Fun;
+use parser::faces::Function;
 use std::collections::HashMap;
+use parser::faces::FnFunction;
 
 #[derive(Debug)]
 pub struct BuilderErr (
@@ -39,14 +40,21 @@ pub enum Builder {
 
 
 impl Builder {
+    fn sin<T:Float>(args: Vec<T>) -> T {
+        args[0].sin()
+    }
+    fn cos<T:Float>(args: Vec<T>) -> T {
+        args[0].cos()
+    }
+
     pub fn new() -> Builder {
         Builder::Empty
     }
 
-    fn functions<T: Float>() -> HashMap<String, Fun<T>> {
+    fn functions<T: 'static + Float + Sized>() -> HashMap<String, Box<Function<T>>> {
         let mut map = HashMap::new();
-        map.insert("sin".to_string(), Fun::new("sin", |v: Vec<T>| v.first().unwrap().sin()));
-        map.insert("cos".to_string(), Fun::new("cos", |v: Vec<T>| v.first().unwrap().cos()));
+        map.insert("sin".to_string(), FnFunction::new("sin", &Self::sin));
+        map.insert("cos".to_string(), FnFunction::new("cos", &Self::cos));
         map
     }
 
@@ -56,7 +64,7 @@ impl Builder {
     fn make_err<X, S: ToString>(self, s: S) -> Result<X, BuilderErr> {
         BuilderErr(s.to_string(), Some(self)).into()
     }
-    pub fn ast<T>(self) -> Result<Ast<T>, BuilderErr> where T: Float {
+    pub fn ast<T: 'static + Float + Sized>(self) -> Result<Ast<T>, BuilderErr> where T: Float {
         Ok(match self {
             Builder::Empty => return Self::simple_err("expression not complete"),
             Builder::Simple(Lexem::Letter(inner)) => match T::from_str_radix(&inner, 10) {
@@ -70,7 +78,7 @@ impl Builder {
             Builder::Complete(inner) => inner.ast_inner()?,
         })
     }
-    fn ast_inner<T: Float>(self) -> Result<Ast<T>,BuilderErr> {
+    fn ast_inner<T: 'static + Float + Sized>(self) -> Result<Ast<T>,BuilderErr> {
         match self {
             Builder::Fun(name,v) => {
                 let fun = match Self::functions().remove(&name) {
