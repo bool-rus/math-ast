@@ -20,7 +20,7 @@ impl<T: 'static + Sized> Function<T> for FnFunction<T> {
         &self.name
     }
     fn args_count(&self) -> usize {
-        self.args_count.clone()
+        self.args_count
     }
     fn call(&self, args: Vec<T>) -> T {
         (self.fun)(args)

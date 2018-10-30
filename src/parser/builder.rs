@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use parser::faces::FnFunction;
 
 #[derive(Debug)]
-pub struct BuilderErr (
+pub struct BuilderErr(
     String,
     Option<Builder>,
 );
@@ -40,10 +40,10 @@ pub enum Builder {
 
 
 impl Builder {
-    fn sin<T:Float>(args: Vec<T>) -> T {
+    fn sin<T: Float>(args: Vec<T>) -> T {
         args[0].sin()
     }
-    fn cos<T:Float>(args: Vec<T>) -> T {
+    fn cos<T: Float>(args: Vec<T>) -> T {
         args[0].cos()
     }
 
@@ -78,9 +78,9 @@ impl Builder {
             Builder::Complete(inner) => inner.ast_inner()?,
         })
     }
-    fn ast_inner<T: 'static + Float + Sized>(self) -> Result<Ast<T>,BuilderErr> {
+    fn ast_inner<T: 'static + Float + Sized>(self) -> Result<Ast<T>, BuilderErr> {
         match self {
-            Builder::Fun(name,v) => {
+            Builder::Fun(name, v) => {
                 let fun = match Self::functions().remove(&name) {
                     None => Self::simple_err(format!("Function {} not found", name))?,
                     Some(x) => x,
@@ -90,7 +90,7 @@ impl Builder {
                     builders.push(b.ast()?);
                 }
                 Ok(Ast::Operation(fun, builders))
-            },
+            }
             b => b.ast(),
         }
     }
@@ -118,7 +118,7 @@ impl Builder {
             } else {
                 Builder::Complex(new_op, Builder::Complex(op, a, b).into(), Builder::Empty.into())
             },
-            (Builder::Complex(op, a, b), lex) => Builder::Complex(op,a,b.process(lex)?.into()),
+            (Builder::Complex(op, a, b), lex) => Builder::Complex(op, a, b.process(lex)?.into()),
             (Builder::Body(inner), lex @ Lexem::Close) => if inner.want_process(&lex) {
                 Builder::Body(inner.process(lex)?.into())
             } else {
@@ -131,7 +131,7 @@ impl Builder {
                 } else {
                     Builder::Complete(Builder::Fun(name, v).into())
                 }
-            },
+            }
             (Builder::Fun(name, mut v), lex @ Lexem::Comma) => {
                 if v.last().unwrap().want_process(&lex) {
                     Self::fun_delegate_inner(name, v, lex)?
@@ -139,7 +139,7 @@ impl Builder {
                     v.push(Builder::Empty);
                     Builder::Fun(name, v)
                 }
-            },
+            }
             (Builder::Fun(name, v), lex) => Self::fun_delegate_inner(name, v, lex)?,
             (b, lex) => return b.make_err(format!("Unexpected lexem {:?}", lex)),
         }.into()
@@ -156,6 +156,54 @@ impl FromStr for Builder {
 
     fn from_str(s: &str) -> BuildResult {
         parse(s).into_iter().fold(Ok(Builder::new()), |b, lex| b?.process(lex))
+    }
+}
+
+
+#[derive(Debug)]
+struct AstFunction<T: Sized + Debug> {
+    name: String,
+    ast: Ast<T>,
+    params: Vec<String>,
+}
+
+impl<T> AstFunction<T> where T: 'static + Float + Sized + Debug {
+    fn new(desc: Builder, value: Builder) -> Result<Self, BuilderErr> {
+        if let Builder::Fun(name, v) = desc {
+            let mut params = Vec::with_capacity(v.len());
+            for param in v {
+                if let Builder::Simple(Lexem::Letter(param_name)) = param {
+                    params.push(param_name); //TODO: а если число?
+                } else {
+                    return param.make_err("fun description must be fun(a,b..)")
+                }
+            }
+            Ok(AstFunction {
+                name,
+                ast: value.ast::<T>()?,
+                params
+            })
+        } else {
+            desc.make_err("fun description must be fun(a,b..)")
+        }
+    }
+}
+
+impl<T: Float + Sized + Debug> Function<T> for AstFunction<T> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn args_count(&self) -> usize {
+        self.params.len()
+    }
+
+    fn call(&self, args: Vec<T>) -> T {
+        let mut params = HashMap::new();
+        for (i, name) in self.params.iter().enumerate() {
+            params.insert(name.clone(), args[i]);
+        }
+        self.ast.calculate(&params).unwrap() //TODO: а если None?
     }
 }
 
@@ -221,7 +269,7 @@ mod test {
         params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(x-3.0*(x-2.0), res);
+        assert_eq!(x - 3.0 * (x - 2.0), res);
     }
 
     #[test]
@@ -234,7 +282,7 @@ mod test {
         params.insert("x".to_string(), x);
 
         let res = tree.calculate(&params).unwrap();
-        assert_eq!(x-3.0.powf(x-2.0), res);
+        assert_eq!(x - 3.0.powf(x - 2.0), res);
     }
 
     #[test]
@@ -252,9 +300,9 @@ mod test {
                                             Builder::Fun("sin".to_string(), vec![
                                                 Builder::Simple(Lexem::Letter("x".to_string()))
                                             ]).into()
-                                        ).into()
+                                        ).into(),
         );
-        assert_eq!(format!("{:?}",b), format!("{:?}",expected))
+        assert_eq!(format!("{:?}", b), format!("{:?}", expected))
     }
 
     #[test]
