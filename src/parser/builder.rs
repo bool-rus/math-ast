@@ -40,11 +40,11 @@ pub enum Builder {
 
 
 impl Builder {
-    fn sin<T: Float>(args: Vec<T>) -> T {
-        args[0].sin()
+    fn sin<T: Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0].sin())
     }
-    fn cos<T: Float>(args: Vec<T>) -> T {
-        args[0].cos()
+    fn cos<T: Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0].cos())
     }
 
     pub fn new() -> Builder {
@@ -198,12 +198,12 @@ impl<T: Float + Sized + Debug> Function<T> for AstFunction<T> {
         self.params.len()
     }
 
-    fn call(&self, args: Vec<T>) -> T {
+    fn call(&self, args: Vec<T>) -> Option<T> {
         let mut params = HashMap::new();
         for (i, name) in self.params.iter().enumerate() {
             params.insert(name.clone(), args[i]);
         }
-        self.ast.calculate(&params).unwrap() //TODO: а если None?
+        self.ast.calculate(&params) //TODO: а если None?
     }
 }
 
@@ -293,7 +293,6 @@ mod test {
         let b = Builder::from_str("5*sin(x)").unwrap();
         let mut params = HashMap::new();
         params.insert("x".to_string(), x);
-
         let expected = Builder::Complex(Operand::High('*'),
                                         Builder::Simple(Lexem::Letter("5".to_string())).into(),
                                         Builder::Complete(

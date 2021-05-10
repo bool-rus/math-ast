@@ -77,20 +77,20 @@ impl Operand {
 }
 
 impl Operand {
-    fn add<T:Float>(args: Vec<T>) -> T {
-        args[0]+args[1]
+    fn add<T:Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0]+args[1])
     }
-    fn sub<T:Float>(args: Vec<T>) -> T {
-        args[0]-args[1]
+    fn sub<T:Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0]-args[1])
     }
-    fn mul<T:Float>(args: Vec<T>) -> T {
-        args[0]*args[1]
+    fn mul<T:Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0]*args[1])
     }
-    fn div<T:Float>(args: Vec<T>) -> T {
-        args[0]/args[1]
+    fn div<T:Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0]/args[1])
     }
-    fn pow<T:Float>(args: Vec<T>) -> T {
-        args[0].powf(args[1])
+    fn pow<T:Float>(args: Vec<T>) -> Option<T> {
+        Some(args[0].powf(args[1]))
     }
 }
 

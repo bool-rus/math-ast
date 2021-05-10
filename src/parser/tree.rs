@@ -24,7 +24,7 @@ impl<T> Ast<T> where T: Sized + Clone {
                 for ast in v {
                     args.push(ast.calculate(&params)?)
                 }
-                fun.call(args)
+                fun.call(args)?
             }
         })
     }

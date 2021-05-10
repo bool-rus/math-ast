@@ -1,5 +1,5 @@
 [package]
-name = "ast"
+name = "math-ast"
 version = "0.1.0"
 authors = ["Баринов Сергей Владимирович <SVBarinov.SBT@sberbank.ru>"]
 
